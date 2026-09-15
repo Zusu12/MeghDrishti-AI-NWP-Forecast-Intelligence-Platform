@@ -5,11 +5,18 @@ Designed for easy PostgreSQL migration — only standard SQL used.
 """
 import asyncio
 import json
+import os
+import tempfile
 import time
 import aiosqlite
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "weathergpt.db"
+# On Vercel / Serverless, the app root is read-only; use writable /tmp for SQLite
+if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    DB_PATH = Path(tempfile.gettempdir()) / "weathergpt.db"
+else:
+    DB_PATH = Path(__file__).parent / "weathergpt.db"
+
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS conversations (
