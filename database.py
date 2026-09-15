@@ -11,11 +11,18 @@ import time
 import aiosqlite
 from pathlib import Path
 
-# On Vercel / Serverless, the app root is read-only; use writable /tmp for SQLite
-if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-    DB_PATH = Path(tempfile.gettempdir()) / "weathergpt.db"
-else:
-    DB_PATH = Path(__file__).parent / "weathergpt.db"
+def _resolve_db_path():
+    if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return Path(tempfile.gettempdir()) / "weathergpt.db"
+    try:
+        test_file = Path(__file__).parent / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return Path(__file__).parent / "weathergpt.db"
+    except Exception:
+        return Path(tempfile.gettempdir()) / "weathergpt.db"
+
+DB_PATH = _resolve_db_path()
 
 
 CREATE_TABLES = """
@@ -45,59 +52,87 @@ CREATE TABLE IF NOT EXISTS weather_cache (
 
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.executescript(CREATE_TABLES)
-        await db.commit()
+    global DB_PATH
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.executescript(CREATE_TABLES)
+            await db.commit()
+    except Exception:
+        try:
+            DB_PATH = Path(tempfile.gettempdir()) / "weathergpt.db"
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.executescript(CREATE_TABLES)
+                await db.commit()
+        except Exception:
+            DB_PATH = ":memory:"
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.executescript(CREATE_TABLES)
+                await db.commit()
 
 
 async def save_message(session_id: str, role: str, content: str, language: str = "en") -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO conversations (session_id, role, content, language, created_at) VALUES (?,?,?,?,?)",
-            (session_id, role, content, language, time.time()),
-        )
-        await db.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO conversations (session_id, role, content, language, created_at) VALUES (?,?,?,?,?)",
+                (session_id, role, content, language, time.time()),
+            )
+            await db.commit()
+    except Exception:
+        pass
 
 
 async def get_history(session_id: str, limit: int = 20) -> list:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT role, content, language, created_at FROM conversations "
-            "WHERE session_id=? ORDER BY created_at DESC LIMIT ?",
-            (session_id, limit),
-        ) as cursor:
-            rows = await cursor.fetchall()
-    return [dict(r) for r in reversed(rows)]
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT role, content, language, created_at FROM conversations "
+                "WHERE session_id=? ORDER BY created_at DESC LIMIT ?",
+                (session_id, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [dict(r) for r in reversed(rows)]
+    except Exception:
+        return []
 
 
 async def log_query(query, location, intent_type, language, latency_ms) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO query_history (query, location, intent_type, language, latency_ms, created_at) VALUES (?,?,?,?,?,?)",
-            (query, location, intent_type, language, latency_ms, time.time()),
-        )
-        await db.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT INTO query_history (query, location, intent_type, language, latency_ms, created_at) VALUES (?,?,?,?,?,?)",
+                (query, location, intent_type, language, latency_ms, time.time()),
+            )
+            await db.commit()
+    except Exception:
+        pass
 
 
 async def cache_get(key: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT data, expires_at FROM weather_cache WHERE cache_key=?", (key,)
-        ) as cursor:
-            row = await cursor.fetchone()
-    if row is None:
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT data, expires_at FROM weather_cache WHERE cache_key=?", (key,)
+            ) as cursor:
+                row = await cursor.fetchone()
+        if row is None:
+            return None
+        data, expires_at = row
+        if time.time() > expires_at:
+            return None
+        return json.loads(data)
+    except Exception:
         return None
-    data, expires_at = row
-    if time.time() > expires_at:
-        return None
-    return json.loads(data)
 
 
 async def cache_set(key: str, data, ttl: int = 300) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO weather_cache (cache_key, data, expires_at) VALUES (?,?,?)",
-            (key, json.dumps(data), time.time() + ttl),
-        )
-        await db.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO weather_cache (cache_key, data, expires_at) VALUES (?,?,?)",
+                (key, json.dumps(data), time.time() + ttl),
+            )
+            await db.commit()
+    except Exception:
+        pass
