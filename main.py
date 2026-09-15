@@ -392,7 +392,16 @@ if os.path.isdir(static_dir):
 
     @app.get("/{path:path}")
     async def catch_all(path: str):
-        # SPA fallback — always return index.html
+        # 1. Check if path exists inside static_dir (e.g. "styles.css", "app.js")
+        candidate = os.path.join(static_dir, path)
+        if os.path.isfile(candidate):
+            return FileResponse(candidate)
+        # 2. Check if path has "static/" prefix stripped (e.g. "/static/styles.css")
+        if path.startswith("static/"):
+            sub_candidate = os.path.join(static_dir, path[len("static/"):])
+            if os.path.isfile(sub_candidate):
+                return FileResponse(sub_candidate)
+        # 3. SPA fallback — return index.html
         return FileResponse(os.path.join(static_dir, "index.html"))
 
 
