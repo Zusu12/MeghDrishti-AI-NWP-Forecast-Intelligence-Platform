@@ -244,3 +244,11 @@ class TestIngestionPipeline:
         assert res.status_code == 200
         data = res.json()
         assert data["data_id"] == "SYNOP-43149"
+
+
+class TestVercelDeployment:
+    def test_vercel_api_entrypoint(self):
+        from api.index import app as vercel_app
+        assert vercel_app is not None
+        assert "MeghDrishti" in vercel_app.title
+

@@ -13,14 +13,14 @@ from pathlib import Path
 
 def _resolve_db_path():
     if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        return Path(tempfile.gettempdir()) / "weathergpt.db"
+        return Path(tempfile.gettempdir()) / "meghdrishti.db"
     try:
         test_file = Path(__file__).parent / ".write_test"
         test_file.touch()
         test_file.unlink()
-        return Path(__file__).parent / "weathergpt.db"
+        return Path(__file__).parent / "meghdrishti.db"
     except Exception:
-        return Path(tempfile.gettempdir()) / "weathergpt.db"
+        return Path(tempfile.gettempdir()) / "meghdrishti.db"
 
 DB_PATH = _resolve_db_path()
 
@@ -101,7 +101,7 @@ async def init_db() -> None:
             await db.commit()
     except Exception:
         try:
-            DB_PATH = Path(tempfile.gettempdir()) / "weathergpt.db"
+            DB_PATH = Path(tempfile.gettempdir()) / "meghdrishti.db"
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.executescript(CREATE_TABLES)
                 await db.commit()

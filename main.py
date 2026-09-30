@@ -59,8 +59,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"API status: {status}")
     if config.DEMO_MODE:
         logger.warning("⚠️  DEMO MODE ACTIVE — set GEMINI_API_KEY and OPENWEATHERMAP_API_KEY for live data.")
-    # Start automated background operational blending scheduler
-    workflow_service.start_background_scheduler(interval_seconds=10800)
+    # Start automated background operational blending scheduler (skip in serverless like Vercel)
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if not is_serverless:
+        workflow_service.start_background_scheduler(interval_seconds=10800)
     yield
     logger.info("MeghDrishti shutting down.")
 

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MeghDrishti — AI–NWP Forecast Intelligence Platform | SIH 2026</title>
+  <meta name="description" content="MeghDrishti — AI-assisted multi-model NWP forecast blending platform. Combines GFS, WRF, and ECMWF with adaptive weighting, confidence quantification, and extreme weather risk guidance." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/static/styles.css?v=3.0" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Top Navbar ──────────────────────────────────────── -->
+  <header class="navbar">
+    <div class="navbar-brand">
+      <div class="logo-badge">
+        <span class="logo-icon">⚡</span>
+      </div>
+      <div>
+        <div class="brand-title">MeghDrishti <span class="badge-sih">SIH26081</span></div>
+        <div class="brand-subtitle">AI–NWP Forecast Intelligence Platform</div>
+      </div>
+    </div>
+
+    <div class="navbar-actions">
+      <!-- Location Search & Quick Selector -->
+      <div class="search-box">
+        <input type="text" id="global-location-input" placeholder="Search city or coordinates..." value="Visakhapatnam" onkeydown="if(event.key==='Enter') applyLocationChange()" />
+        <button class="btn-search" onclick="applyLocationChange()" title="Search">🔍</button>
+      </div>
+
+      <button class="location-badge" id="gps-btn" title="Detect GPS Location" onclick="requestCurrentLocation()">
+        <span>🎯</span> GPS
+      </button>
+
+      <div class="system-status-indicator" id="system-status-pill" title="Operational Workflow Status">
+        <span class="status-dot pulse-green"></span>
+        <span id="system-status-text">SYSTEM ACTIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Scientific Navigation Bar ────────────────────────── -->
+  <nav class="tab-nav" role="tablist">
+    <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <span class="tab-icon">📊</span>Dashboard
+    </button>
+    <button class="tab-btn" data-tab="forecast" onclick="switchTab('forecast')">
+      <span class="tab-icon">🌦️</span>Consensus Forecast
+    </button>
+    <button class="tab-btn" data-tab="comparison" onclick="switchTab('comparison')">
+      <span class="tab-icon">⚖️</span>Model Comparison
+    </button>
+    <button class="tab-btn" data-tab="weightmaps" onclick="switchTab('weightmaps')">
+      <span class="tab-icon">🗺️</span>Weight Maps
+    </button>
+    <button class="tab-btn" data-tab="verification" onclick="switchTab('verification')">
+      <span class="tab-icon">📈</span>Verification & Skill
+    </button>
+    <button class="tab-btn" data-tab="extremes" onclick="switchTab('extremes')">
+      <span class="tab-icon">🚨</span>Extreme Weather
+    </button>
+    <button class="tab-btn" data-tab="workflow" onclick="switchTab('workflow')">
+      <span class="tab-icon">⚙️</span>Operational Workflow
+    </button>
+    <button class="tab-btn" data-tab="map" onclick="switchTab('map')">
+      <span class="tab-icon">🌐</span>GIS Map
+    </button>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 1: EXECUTIVE DASHBOARD                             -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-dashboard" class="tab-panel active">
+    <div class="dashboard-container">
+
+      <!-- Executive Header Bar -->
+      <div class="exec-header-bar card">
+        <div class="exec-location-group">
+          <div class="exec-location-title" id="dash-location-title">Visakhapatnam, Andhra Pradesh</div>
+          <div class="exec-meta" id="dash-meta-info">Lat 17.69° N, Lon 83.22° E · Cycle: 12Z Operational Blend</div>
+        </div>
+        <div class="exec-badge-group">
+          <span class="metric-pill regime-pill" id="dash-regime-badge">REGIME: MONSOON</span>
+          <span class="metric-pill conf-pill conf-high" id="dash-conf-badge">CONFIDENCE: HIGH (88%)</span>
+          <button class="btn-primary" onclick="triggerWorkflowCycle()" id="dash-run-cycle-btn">
+            <span>⚡</span> Run Blending Cycle
+          </button>
+        </div>
+      </div>
+
+      <!-- Comparison of Observation vs Blended Forecast -->
+      <div class="grid-2" style="margin-top:14px; gap:16px;">
+        <!-- Card 1: Observational Reference (OpenWeather) -->
+        <div class="card obs-card">
+          <div class="card-header">
+            <span class="card-tag obs-tag">GROUND TRUTH / OBSERVATION</span>
+            <span class="timestamp" id="obs-time">Just Now</span>
+          </div>
+          <div class="weather-hero-row">
+            <div>
+              <div class="hero-temp" id="obs-temp">29.4°C</div>
+              <div class="hero-condition" id="obs-condition">Scattered Clouds · Light Rain</div>
+              <div class="hero-feels" id="obs-feels">Feels like 32.8°C</div>
+            </div>
+            <div class="hero-icon" id="obs-icon">⛅</div>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-item">💧 Humidity: <strong id="obs-humidity">78%</strong></div>
+            <div class="metric-item">💨 Wind: <strong id="obs-wind">14.0 km/h</strong></div>
+            <div class="metric-item">⏱️ Pressure: <strong id="obs-pressure">1011 hPa</strong></div>
+            <div class="metric-item">🌧️ Rain (1h): <strong id="obs-rain">1.2 mm</strong></div>
+          </div>
+          <div class="source-footnote">* Reference surface observation (OpenWeatherMap / AWS Ingestion)</div>
+        </div>
+
+        <!-- Card 2: Consensus Blended Forecast -->
+        <div class="card blend-card">
+          <div class="card-header">
+            <span class="card-tag blend-tag">AI–NWP CONSENSUS BLEND</span>
+            <span class="model-count-badge">GFS + WRF + ECMWF</span>
+          </div>
+          <div class="weather-hero-row">
+            <div>
+              <div class="hero-temp" id="blend-temp">29.1°C</div>
+              <div class="hero-condition" id="blend-condition">Consensus Prediction (Next 3h)</div>
+              <div class="hero-feels" id="blend-rain-signal">🌧️ Rain Expected: <strong>3.8 mm</strong> (PoP 72%)</div>
+            </div>
+            <div class="hero-icon" id="blend-icon">🌧️</div>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric-item">💨 Wind Vector: <strong id="blend-wind">16.2 km/h (SSW)</strong></div>
+            <div class="metric-item">⏱️ Barometer: <strong id="blend-pressure">1010.8 hPa</strong></div>
+            <div class="metric-item">🎯 Inter-Model Spread: <strong id="blend-spread">σ = 0.42°C (Low)</strong></div>
+            <div class="metric-item">🛡️ Risk Guidance: <strong id="blend-risk-status" style="color:#EAB308;">Yellow (Moderate)</strong></div>
+          </div>
+          <div class="source-footnote">* Synthesized multi-model consensus weighted by historical regional skill</div>
+        </div>
+      </div>
+
+      <!-- Dynamic Weights & Uncertainty Quantification Row -->
+      <div class="grid-3" style="margin-top:16px; gap:16px;">
+        <!-- Dynamic Model Weights -->
+        <div class="card">
+          <div class="section-title">⚖️ Dynamic Model Weights (Lead: +24h)</div>
+          <p class="section-desc">Computed adaptively based on historical skill, lead-time decay, and detected regime.</p>
+          <div class="weight-bars-container" id="dash-weight-bars">
+            <div class="weight-bar-item">
+              <div class="weight-label-row">
+                <span><strong>NOAA GFS</strong> (Global 0.25°)</span>
+                <span id="wt-val-gfs">32%</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill gfs-fill" id="wt-fill-gfs" style="width:32%"></div></div>
+            </div>
+            <div class="weight-bar-item">
+              <div class="weight-label-row">
+                <span><strong>NCAR WRF</strong> (High-Res Mesoscale)</span>
+                <span id="wt-val-wrf">44%</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill wrf-fill" id="wt-fill-wrf" style="width:44%"></div></div>
+            </div>
+            <div class="weight-bar-item">
+              <div class="weight-label-row">
+                <span><strong>ECMWF IFS</strong> (Global HRES)</span>
+                <span id="wt-val-ecmwf">24%</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill ecmwf-fill" id="wt-fill-ecmwf" style="width:24%"></div></div>
+            </div>
+          </div>
+          <div class="formula-box">
+            $$w_m \propto \frac{1}{\text{MAE}_m + \epsilon} \cdot \alpha_m(\tau) \cdot \gamma(R)$$
+          </div>
+        </div>
+
+        <!-- Model Disagreement & Spread -->
+        <div class="card">
+          <div class="section-title">🎯 Model Disagreement & Spread</div>
+          <p class="section-desc">Quantifies uncertainty through weighted inter-model variance across variables.</p>
+          <div class="disagreement-metrics">
+            <div class="metric-stat-box">
+              <div class="stat-num" id="stat-spread">0.42°C</div>
+              <div class="stat-label">Weighted Spread (σ)</div>
+            </div>
+            <div class="metric-stat-box">
+              <div class="stat-num" id="stat-range">1.10°C</div>
+              <div class="stat-label">Model Range (Max - Min)</div>
+            </div>
+          </div>
+          <div class="agreement-indicator-box">
+            <div style="font-size:0.8rem; margin-bottom:4px;">Inter-Model Agreement Factor:</div>
+            <div class="progress-track"><div class="progress-fill" id="agreement-factor-bar" style="width:86%; background:#10B981;"></div></div>
+            <div style="font-size:0.75rem; color:#64748B; margin-top:4px;" id="agreement-factor-text">86% Agreement (Tight clustering across GFS & WRF)</div>
+          </div>
+        </div>
+
+        <!-- Extreme Weather Risk Guidance -->
+        <div class="card">
+          <div class="section-title">🚨 Extreme Weather Risk Signals</div>
+          <p class="section-desc">Algorithmic risk evaluation based on multi-model consensus threshold breaches.</p>
+          <div id="dash-alerts-list" class="alerts-container">
+            <div class="alert-item alert-yellow">
+              <div class="alert-badge">YELLOW</div>
+              <div class="alert-content">
+                <strong>Moderate Heavy Rain Signal</strong>
+                <div>Accumulation >18mm forecasted in next 24 hours. Monitor localized runoff.</div>
+              </div>
+            </div>
+          </div>
+          <div class="source-footnote" style="margin-top:8px;">
+            * Model-derived guidance. Refer to IMD/NDMA for official statutory warnings.
+          </div>
+        </div>
+      </div>
+
+      <!-- 24-Hour Quick Consensus Timeline -->
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title">⏱️ 24-Hour Consensus Forecast Timeline</div>
+        <div class="timeline-scroller" id="dash-timeline-scroller">
+          <!-- Timestep cards injected via JS -->
+          <div style="padding:20px; text-align:center; color:#94A3B8;">Loading consensus timeline…</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 2: CONSENSUS FORECAST                              -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-forecast" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="section-title">🌦️ 120-Hour (5-Day) Multi-Model Consensus Forecast</div>
+            <p class="section-desc">Synthesized from GFS, WRF, and ECMWF with 3-hourly lead-time precision.</p>
+          </div>
+          <div class="filter-controls">
+            <label style="font-size:0.8rem; font-weight:600;">Variable:</label>
+            <select id="forecast-chart-var" onchange="renderForecastChart()" class="select-input">
+              <option value="temp">2m Temperature (°C)</option>
+              <option value="rain">Precipitation (mm/3h)</option>
+              <option value="wind">Wind Speed (km/h)</option>
+              <option value="pres">Pressure (hPa)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="height:320px; margin-top:14px;">
+          <canvas id="blendedForecastChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Forecast Data Table -->
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title">📋 40-Step Meteorological Forecast Table</div>
+        <div class="table-container">
+          <table class="data-table" id="forecast-data-table">
+            <thead>
+              <tr>
+                <th>Lead (h)</th>
+                <th>Valid Time (UTC)</th>
+                <th>T (2m)</th>
+                <th>Precip (3h)</th>
+                <th>PoP (%)</th>
+                <th>Wind (10m)</th>
+                <th>Dir</th>
+                <th>Pressure</th>
+                <th>RH (%)</th>
+                <th>Dominant Weight</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="forecast-table-tbody">
+              <tr><td colspan="11" style="text-align:center; padding:16px;">Loading consensus forecast…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 3: MODEL COMPARISON                                -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-comparison" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="section-title">⚖️ Multi-Model Comparison: GFS vs WRF vs ECMWF vs Blended</div>
+            <p class="section-desc">Examine individual model divergences and observe how consensus blending resolves extremes.</p>
+          </div>
+          <button class="btn-primary" onclick="loadModelComparison()">🔄 Refresh Comparison</button>
+        </div>
+
+        <div style="height:340px; margin-top:16px;">
+          <canvas id="modelComparisonChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Comparison Matrix Cards -->
+      <div class="grid-4" style="margin-top:16px; gap:14px;" id="comparison-cards-grid">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 4: WEIGHT MAPS                                     -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-weightmaps" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="section-title">🗺️ Geographic Model Weight Distribution Across India</div>
+            <p class="section-desc">Displays the optimal model weights and dominant model across meteorological subdivisions.</p>
+          </div>
+          <div class="filter-controls">
+            <select id="weight-map-var" onchange="loadWeightMap()" class="select-input">
+              <option value="temperature">Temperature (°C)</option>
+              <option value="precipitation">Precipitation (mm)</option>
+              <option value="wind_speed">Wind Speed (km/h)</option>
+            </select>
+            <select id="weight-map-lead" onchange="loadWeightMap()" class="select-input">
+              <option value="12">Lead: +12h</option>
+              <option value="24" selected>Lead: +24h</option>
+              <option value="48">Lead: +48h</option>
+              <option value="72">Lead: +72h</option>
+              <option value="120">Lead: +120h</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-4" style="margin-top:16px; gap:14px;" id="weight-map-cards-container">
+          <!-- Regional weight breakdown cards -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 5: FORECAST VERIFICATION & SKILL                   -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-verification" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="section-title">📈 Forecast Skill Verification & Benchmarking</div>
+            <p class="section-desc">Empirical comparison verifying whether the Blended Consensus outperforms individual NWP models.</p>
+          </div>
+          <div class="filter-controls">
+            <select id="verif-var" onchange="loadVerification()" class="select-input">
+              <option value="temperature">Temperature</option>
+              <option value="precipitation">Precipitation</option>
+              <option value="wind_speed">Wind Speed</option>
+            </select>
+            <select id="verif-region" onchange="loadVerification()" class="select-input">
+              <option value="coastal_ap">Coastal Andhra Pradesh</option>
+              <option value="western_ghats">Western Ghats / Mumbai</option>
+              <option value="north_india">North-West Plains / Delhi</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="verdict-banner" id="verif-verdict-box" style="margin-top:14px; padding:12px 18px; border-radius:10px; background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25); color:#1E40AF; font-weight:600;">
+          Blended consensus improves MAE by 15.4% over the best single model (1.30 vs 1.10 °C).
+        </div>
+
+        <div style="height:320px; margin-top:16px;">
+          <canvas id="verificationSkillChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Skill Metrics Table -->
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title">📊 Continuous & Categorical Verification Scores</div>
+        <div class="table-container">
+          <table class="data-table" id="verif-metrics-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>MAE (Error)</th>
+                <th>RMSE</th>
+                <th>Mean Bias</th>
+                <th>POD (Hit Rate)</th>
+                <th>FAR (False Alarm)</th>
+                <th>CSI (Threat Score)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="verif-metrics-tbody">
+              <!-- Populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 6: EXTREME WEATHER                                 -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-extremes" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="grid-2" style="gap:16px;">
+        <!-- Left: Model-Based Risk Guidance -->
+        <div class="card">
+          <div class="section-title" style="color:#2563EB;">⚡ AI–NWP Consensus Risk Guidance</div>
+          <p class="section-desc">Algorithmically identified meteorological threshold breaches from consensus forecasts.</p>
+          <div id="extremes-model-guidance-list" class="alerts-container" style="margin-top:12px;">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Right: Official Statutory Warnings -->
+        <div class="card">
+          <div class="section-title" style="color:#DC2626;">🚨 Authoritative IMD / NDMA CAP Warnings</div>
+          <p class="section-desc">Official 4-Color Coded District Warnings from statutory meteorological authorities.</p>
+          <div id="extremes-official-warnings-list" class="alerts-container" style="margin-top:12px;">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 7: OPERATIONAL WORKFLOW                            -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-workflow" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="section-title">⚙️ Operational Blending Pipeline & Telemetry</div>
+            <p class="section-desc">Real-time status of the automated 13-stage multi-model ingestion, normalization, and blending engine.</p>
+          </div>
+          <button class="btn-primary" onclick="triggerWorkflowCycle()" id="workflow-run-btn">
+            <span>⚡</span> Trigger Immediate Blending Run
+          </button>
+        </div>
+
+        <!-- Telemetry Summary Cards -->
+        <div class="grid-4" style="margin-top:16px; gap:14px;">
+          <div class="metric-stat-box">
+            <div class="stat-num" id="wf-stat-status">COMPLETED</div>
+            <div class="stat-label">Pipeline Status</div>
+          </div>
+          <div class="metric-stat-box">
+            <div class="stat-num" id="wf-stat-duration">88 ms</div>
+            <div class="stat-label">Execution Latency</div>
+          </div>
+          <div class="metric-stat-box">
+            <div class="stat-num" id="wf-stat-timesteps">40 Steps</div>
+            <div class="stat-label">Consensus Horizon</div>
+          </div>
+          <div class="metric-stat-box">
+            <div class="stat-num" id="wf-stat-providers">3 Active</div>
+            <div class="stat-label">Ingested Models</div>
+          </div>
+        </div>
+
+        <!-- Pipeline Steps List -->
+        <div class="section-title" style="margin-top:24px; font-size:0.95rem;">Execution Steps Log</div>
+        <div class="workflow-steps-list" id="workflow-steps-container" style="margin-top:10px;">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB 8: GIS MAP                                         -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="tab-map" class="tab-panel">
+    <div class="dashboard-container">
+      <div class="card" style="padding:10px;">
+        <div class="map-controls-bar">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label style="font-weight:600; font-size:0.8rem;">Layer:</label>
+            <select id="map-layer-selector" onchange="updateMapLayer()" class="select-input">
+              <option value="blended">Consensus Blended Forecast</option>
+              <option value="gfs">NOAA GFS Model Grid</option>
+              <option value="wrf">NCAR WRF Mesoscale Grid</option>
+              <option value="obs">Surface Observations (AWS/OWM)</option>
+              <option value="weights">Dominant Weight Map</option>
+            </select>
+          </div>
+          <div style="font-size:0.78rem; color:#64748B;">Click anywhere on map to fetch point forecast.</div>
+        </div>
+        <div id="gis-map" style="height:520px; border-radius:12px; margin-top:8px;"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Toast notifications -->
+<div id="toast-container"></div>
+
+<!-- Application Logic -->
+<script src="/static/app.js?v=3.0"></script>
+</body>
+</html>

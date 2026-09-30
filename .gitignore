@@ -39,3 +39,6 @@ htmlcov/
 # Audio artifacts
 *.mp3
 *.wav
+
+# Vercel
+.vercel/

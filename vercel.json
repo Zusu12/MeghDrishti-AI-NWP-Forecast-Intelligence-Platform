@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/alerts/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/advisories/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/location/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/ingest/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/chat",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/voice",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/climate",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/docs",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "/api/index.py"
+    }
+  ]
+}
