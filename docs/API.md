@@ -1,5 +1,5 @@
 # REST API Specification
-## Hybrid AI–NWP Multi-Model Forecast Blending System (SIH26081)
+## MeghDrishti — AI–NWP Forecast Intelligence Platform (SIH26081)
 
 ---
 

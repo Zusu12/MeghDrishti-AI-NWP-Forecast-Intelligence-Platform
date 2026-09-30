@@ -1,4 +1,4 @@
-# WeatherGPT — Hybrid AI–NWP Multi-Model Forecast Blending System 🌦️
+# MeghDrishti — AI–NWP Forecast Intelligence Platform 🌦️
 ### Smart India Hackathon 2026 · Problem Statement SIH26081 · Ministry of Earth Sciences (MoES)
 
 ---
@@ -8,7 +8,7 @@
 **Problem Statement SIH26081:**  
 *"Different Numerical Weather Prediction (NWP) models exhibit varying predictive skill across geographic regions, climatological seasons, forecast lead times, and specific atmospheric weather regimes."*
 
-**WeatherGPT** has transformed from a conversational weather interface into an **operational multi-model meteorological intelligence and forecast blending platform**. 
+**MeghDrishti** is an **operational multi-model meteorological intelligence and forecast blending platform**. 
 
 The core is an automated AI-assisted weighting framework that:
 1. Ingests heterogeneous gridded model forecasts (**NOAA GFS 0.25°**, **NCAR WRF-ARW 3–9km**, **ECMWF IFS 9km**).
@@ -95,8 +95,8 @@ The core is an automated AI-assisted weighting framework that:
 
 ```powershell
 # 1. Clone repository
-git clone https://github.com/Zusu12/WeatherGPT.git
-cd WeatherGPT/adv
+git clone https://github.com/Zusu12/MeghDrishti-AI-NWP-Forecast-Intelligence-Platform.git
+cd MeghDrishti-AI-NWP-Forecast-Intelligence-Platform/adv
 
 # 2. Activate virtual environment
 .\venv\Scripts\activate

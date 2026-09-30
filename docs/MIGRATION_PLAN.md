@@ -1,5 +1,5 @@
-# WeatherGPT — Technical Migration Plan
-## SIH 2026 Problem Statement SIH26081: Hybrid AI–NWP Multi-Model Forecast Blending System
+# MeghDrishti — Technical Migration Plan
+## SIH 2026 Problem Statement SIH26081: AI–NWP Forecast Intelligence Platform
 
 ---
 

@@ -1,4 +1,4 @@
-# WeatherGPT — Hybrid AI–NWP Multi-Model Forecast Intelligence
+# MeghDrishti — AI–NWP Forecast Intelligence Platform
 ## System Architecture Specification (SIH 2026 Problem Statement: SIH26081)
 
 ---
@@ -6,9 +6,9 @@
 ## 1. Executive Summary
 
 **Problem Statement (SIH26081):** "Hybrid AI–NWP Multi-Model Forecast Blending System"  
-**Platform Identity:** *WeatherGPT — Hybrid AI–NWP Multi-Model Forecast Intelligence*
+**Platform Identity:** *MeghDrishti — AI–NWP Forecast Intelligence Platform*
 
-WeatherGPT transforms from a conversational weather assistant into a scientific multi-model meteorological intelligence platform. The core is an AI-assisted Numerical Weather Prediction (NWP) multi-model forecast blending engine that ingests heterogeneous model forecasts (NOAA GFS, WRF-ARW, ECMWF IFS, Bharat Forecast System), normalizes their spatiotemporal grids, evaluates historical model skill, dynamically computes optimal model weights conditioned on lead time, region, and weather regime, blends the predictions, quantifies forecast confidence and model disagreement, detects extreme weather risks, and exposes actionable insights through the conversational WeatherGPT interface powered by grounded Google Gemini AI and ElevenLabs voice synthesis.
+MeghDrishti is a scientific multi-model meteorological intelligence and AI-assisted Numerical Weather Prediction (NWP) forecast blending platform. The core is an AI-assisted multi-model forecast blending engine that ingests heterogeneous model forecasts (NOAA GFS, WRF-ARW, ECMWF IFS), normalizes their spatiotemporal grids, evaluates historical model skill, dynamically computes optimal model weights conditioned on lead time, region, and weather regime, blends the predictions, quantifies forecast confidence and model disagreement, detects extreme weather risks, and exposes actionable insights through an operational forecasting dashboard.
 
 ---
 

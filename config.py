@@ -1,5 +1,5 @@
 """
-config.py — WeatherGPT centralised configuration
+config.py — MeghDrishti centralised configuration
 All environment variables are loaded here. Services import from this module.
 Railway deployment: uses $PORT for dynamic port binding.
 """

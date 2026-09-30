@@ -1,11 +1,11 @@
-# Target Architecture: Hybrid AI–NWP Multi-Model Forecast Blending System
+# Target Architecture: MeghDrishti — AI–NWP Forecast Intelligence Platform
 ## Smart India Hackathon 2026 — Problem Statement SIH26081
 
 ---
 
 ## 1. System Mission & Core Philosophy
 
-The **Hybrid AI–NWP Multi-Model Forecast Blending System** addresses the fundamental meteorological reality highlighted in SIH26081:
+The **MeghDrishti — AI–NWP Forecast Intelligence Platform** addresses the fundamental meteorological reality highlighted in SIH26081:
 
 > *Different Numerical Weather Prediction (NWP) models exhibit varying predictive skill across geographic regions, climatological seasons, forecast lead times, and specific atmospheric weather regimes.*
 

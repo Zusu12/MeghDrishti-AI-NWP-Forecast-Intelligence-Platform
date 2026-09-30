@@ -1,7 +1,7 @@
 """
-main.py — WeatherGPT FastAPI application
+main.py — MeghDrishti — AI–NWP Forecast Intelligence Platform
 Railway-compatible: reads $PORT from environment, binds to 0.0.0.0.
-Serves static frontend + all REST and WebSocket API endpoints.
+Serves scientific forecasting frontend + all REST and WebSocket API endpoints.
 """
 import asyncio
 import logging
@@ -44,7 +44,7 @@ logging.basicConfig(
     level=logging.DEBUG if config.DEBUG else logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
-logger = logging.getLogger("weathergpt")
+logger = logging.getLogger("meghdrishti")
 
 # ── Rate limiter ───────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
@@ -53,7 +53,7 @@ limiter = Limiter(key_func=get_remote_address)
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("WeatherGPT starting up…")
+    logger.info("MeghDrishti starting up…")
     await database.init_db()
     status = config.api_status()
     logger.info(f"API status: {status}")
@@ -62,14 +62,14 @@ async def lifespan(app: FastAPI):
     # Start automated background operational blending scheduler
     workflow_service.start_background_scheduler(interval_seconds=10800)
     yield
-    logger.info("WeatherGPT shutting down.")
+    logger.info("MeghDrishti shutting down.")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="WeatherGPT",
-    description="AI-powered multilingual weather intelligence — SIH 2026 Prototype",
-    version="1.0.0",
+    title="MeghDrishti — AI–NWP Forecast Intelligence Platform",
+    description="AI-assisted multi-model NWP forecast blending system — SIH 2026 Problem Statement SIH26081",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url=None,
@@ -151,8 +151,8 @@ alert_manager = AlertConnectionManager()
 async def health():
     return {
         "status": "ok",
-        "service": "WeatherGPT",
-        "version": "1.0.0",
+        "service": "MeghDrishti — AI–NWP Forecast Intelligence Platform",
+        "version": "2.0.0",
         "apis": config.api_status(),
         "ingestion": ingestion_service.ingestion_service.get_status(),
     }
