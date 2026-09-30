@@ -1,6 +1,9 @@
 # MeghDrishti — AI–NWP Forecast Intelligence Platform 🌦️
 ### Smart India Hackathon 2026 · Problem Statement SIH26081 · Ministry of Earth Sciences (MoES)
 
+[![MeghDrishti CI](https://github.com/Zusu12/MeghDrishti-AI-NWP-Forecast-Intelligence-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Zusu12/MeghDrishti-AI-NWP-Forecast-Intelligence-Platform/actions)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FZusu12%2FMeghDrishti-AI-NWP-Forecast-Intelligence-Platform)
+
 ---
 
 ## 1. Executive Summary & Problem Statement
@@ -101,13 +104,20 @@ cd MeghDrishti-AI-NWP-Forecast-Intelligence-Platform/adv
 # 2. Activate virtual environment
 .\venv\Scripts\activate
 
-# 3. Run automated test suite (76 tests)
+# 3. Run automated test suite (77 tests)
 pytest
 
 # 4. Start the application
 python main.py
 ```
 Open **`http://localhost:8000`** in your browser.
+
+### 4.1. Deploying to Vercel
+You can deploy MeghDrishti to Vercel in 1 click using the Vercel Deploy button above or via Vercel CLI:
+```bash
+vercel
+```
+The repository includes pre-configured serverless handlers (`api/index.py`), edge static CDN routes (`vercel.json`), and Python runtime pinning (`runtime.txt`).
 
 ---
 
