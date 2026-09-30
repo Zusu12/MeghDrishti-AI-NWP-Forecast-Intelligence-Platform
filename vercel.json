@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/((?!static/|favicon\\.ico).*)",
-      "destination": "/api/index.py"
-    }
-  ]
-}
