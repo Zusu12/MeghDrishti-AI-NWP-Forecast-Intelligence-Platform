@@ -309,9 +309,42 @@ async def get_alerts(
         else:
             weather = await weather_service.get_current_weather(location=location)
             forecast = await weather_service.get_forecast(location=location)
-        return alert_service.check_alerts(weather, forecast)
+        loc = location
+        if not loc and lat is not None and lon is not None:
+            loc = weather.get("location")
+        return alert_service.check_alerts(weather, forecast, location=loc)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/alerts/official")
+@limiter.limit(config.RATE_LIMIT_WEATHER)
+async def get_official_alerts(
+    request: Request,
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    try:
+        import imd_service
+        return await imd_service.get_official_imd_warnings(location=location, lat=lat, lon=lon)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/ingestion/status")
+async def get_ingestion_status():
+    return ingestion_service.ingestion_service.get_detailed_telemetry()
+
+
+@app.post("/ingestion/mqtt/publish")
+async def publish_mqtt(payload: dict, topic: str = "weather/stations/manual/telemetry"):
+    return ingestion_service.ingestion_service.publish_mqtt_telemetry(topic, payload)
+
+
+@app.post("/ingestion/wis2/publish")
+async def publish_wis2(wnm: dict, topic: str = "origin/a/wis2/in-imd/data/core/weather/surface-based-observations/synop"):
+    return ingestion_service.ingestion_service.publish_wis2_wnm(topic, wnm)
 
 
 @app.get("/climate")
@@ -360,8 +393,23 @@ async def voice(request: Request, body: VoiceRequest):
 
 
 @app.get("/nwp")
-async def get_nwp(location: str = "Visakhapatnam", provider: str = "gfs"):
-    return nwp_service.get_nwp_forecast(location, provider)
+async def get_nwp(
+    location: Optional[str] = "Visakhapatnam",
+    provider: str = "owm",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    try:
+        return await nwp_service.get_nwp_forecast(
+            location=location or "Visakhapatnam",
+            provider=provider,
+            lat=lat,
+            lon=lon,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/nwp/status")

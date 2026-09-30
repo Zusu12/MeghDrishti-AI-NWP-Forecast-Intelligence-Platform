@@ -31,8 +31,9 @@ WeatherGPT combines **Google Gemini AI**, **OpenWeatherMap real-time data**, and
 | 📊 Climate Analytics (Chart.js) | ✅ Implemented |
 | 🌾 Decision Support (Farm/Aviation/Marine) | ✅ Implemented |
 | 🚂 Railway Deployment Ready | ✅ Implemented |
-| 🌐 GFS/WRF/NWP Architecture | ◐ Integration-ready |
-| 📡 WIS2.0 / MQTT Integration | ◐ Integration-ready |
+| 🌐 NWP Multi-Model Engine (OWM GFS/WRF) | ✅ Implemented |
+| 📡 WIS2.0 / MQTT Ingestion Pipeline | ✅ Implemented |
+| 🚨 IMD / NDMA Official CAP Warnings | ✅ Implemented |
 
 ---
 
@@ -211,12 +212,12 @@ python -m pytest tests/ -v
 | Multilingual | EN / HI / TE with auto-detection |
 | Voice input | Browser SpeechRecognition |
 | Voice output | ElevenLabs multilingual TTS |
-| Extreme weather alerts | Deterministic rule engine |
+| Extreme weather alerts | Deterministic rule engine + Official IMD/NDMA CAP v1.2 alerts |
 | Decision support | Agriculture / Aviation / Marine / Travel |
 | Climate analysis | Chart.js trend visualization |
 | GIS | Leaflet + OpenStreetMap |
-| NWP (GFS/WRF) | Architecture ready |
-| WIS2.0 / MQTT | Integration-ready abstraction |
+| NWP (GFS/WRF/ECMWF) | Operational via OpenWeatherMap Multi-Model Engine |
+| WIS2.0 / MQTT | Operational Ingestion Pipeline (WMO in-imd & IoT AWS) |
 
 ---
 

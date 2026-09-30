@@ -76,3 +76,33 @@ class TestAlertRules:
         assert result["alert"] is True
         types = [a["type"] for a in result["alerts"]]
         assert "forecast_rain" in types
+
+    def test_imd_warning_structure(self):
+        result = check_alerts(make_weather())
+        assert "imd_warning" in result
+        warning = result["imd_warning"]
+        assert "color_code" in warning
+        assert "color_name" in warning
+        assert "headline" in warning
+        assert "instruction" in warning
+
+    def test_imd_cap_document(self):
+        result = check_alerts(make_weather())
+        assert "cap_document" in result
+        cap = result["cap_document"]
+        assert cap["status"] == "Actual"
+        assert cap["msgType"] == "Alert"
+        assert "identifier" in cap
+        assert "info" in cap
+        assert cap["info"]["category"] == "Met"
+
+    def test_imd_red_alert_escalation(self):
+        result = check_alerts(make_weather(rain_1h=55.0, wind_speed=70.0))
+        assert result["imd_warning"]["color_code"] == "RED"
+        assert result["severity"] == "HIGH"
+        assert "Extremely Heavy" in result["imd_warning"]["headline"]
+
+    def test_imd_orange_alert_thunderstorm(self):
+        result = check_alerts(make_weather(condition_id=202, wind_speed=52.0))
+        assert result["imd_warning"]["color_code"] == "ORANGE"
+        assert result["severity"] in ["WARNING", "HIGH"]

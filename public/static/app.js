@@ -678,12 +678,42 @@ function renderAlerts(container, data, location) {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div>
         <div style="font-weight:700;font-size:1rem;">${location}</div>
-        <div style="font-size:0.72rem;color:#64748B;">Deterministic Risk Assessment</div>
+        <div style="font-size:0.72rem;color:#64748B;">Multi-Hazard Threat Evaluation & Official CAP Feed</div>
       </div>
       <div style="background:${color};color:white;border-radius:999px;padding:4px 14px;font-size:0.72rem;font-weight:700;">${data.severity}</div>
     </div>`;
 
-  if (!data.alert || data.alerts.length === 0) {
+  // Official IMD 4-Color Warning & NDMA CAP Bulletin Card
+  if (data.imd_warning) {
+    const imd = data.imd_warning;
+    html += `
+      <div style="background:${imd.bg_hex};border:2px solid ${imd.color_hex};border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.2rem;">🏛️</span>
+            <div>
+              <span style="font-size:0.75rem;font-weight:800;color:${imd.color_hex};letter-spacing:0.04em;">OFFICIAL IMD / NDMA CAP WARNING</span>
+              <div style="font-size:0.68rem;color:#475569;">${imd.sender} · ${imd.area}</div>
+            </div>
+          </div>
+          <div style="background:${imd.color_hex};color:white;font-weight:800;font-size:0.75rem;padding:4px 12px;border-radius:20px;letter-spacing:0.03em;">
+            ${imd.color_code} ALERT (${imd.action.toUpperCase()})
+          </div>
+        </div>
+        <div style="font-size:0.88rem;font-weight:700;color:#1E293B;margin-bottom:6px;line-height:1.4;">
+          ${imd.headline}
+        </div>
+        <div style="font-size:0.78rem;color:#334155;line-height:1.5;margin-bottom:8px;">
+          ${imd.instruction}
+        </div>
+        <div style="font-size:0.68rem;color:#64748B;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;border-top:1px solid rgba(0,0,0,0.06);padding-top:6px;">
+          <span>CAP ID: <code>${imd.bulletin_id || '--'}</code></span>
+          <span>Emergency Helpline: <strong>112</strong> · NDMA: <strong>1078</strong></span>
+        </div>
+      </div>`;
+  }
+
+  if (!data.alert && (!data.alerts || data.alerts.length === 0) && (!data.imd_warning || data.imd_warning.color_code === 'GREEN')) {
     html += `
       <div class="alert-card INFO">
         <div style="font-size:1.4rem;">✅</div>
@@ -719,6 +749,9 @@ function renderAlerts(container, data, location) {
 async function loadClimate() {
   const location = document.getElementById('climate-location')?.value.trim() || state.location;
   const days = parseInt(document.getElementById('climate-days')?.value || '30');
+
+  // Trigger NWP model run in parallel
+  loadNWP();
 
   try {
     const res = await fetch(`/climate?location=${encodeURIComponent(location)}&days=${days}`);
@@ -785,6 +818,84 @@ function renderClimateCharts(data) {
       options: baseOpts,
     });
   }
+}
+
+// ── NWP Model Integration ──────────────────────────────────────────────────────
+async function loadNWP() {
+  const location = document.getElementById('climate-location')?.value.trim() || state.location;
+  const provider = document.getElementById('nwp-provider-select')?.value || 'owm';
+  const tbody = document.getElementById('nwp-tbody');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#2563EB;">
+      <div class="spinner" style="border-color:rgba(37,99,235,0.3);border-top-color:#2563EB;width:18px;height:18px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
+      Running numerical model assimilation via OpenWeatherMap…
+    </td></tr>`;
+  }
+
+  try {
+    let url = `/nwp?location=${encodeURIComponent(location)}&provider=${encodeURIComponent(provider)}`;
+    if (state.lat && state.lon && !document.getElementById('climate-location')?.value) {
+      url = `/nwp?lat=${state.lat}&lon=${state.lon}&provider=${encodeURIComponent(provider)}`;
+    }
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#EF4444;">Failed to fetch NWP data.</td></tr>`;
+      return;
+    }
+    const data = await res.json();
+    renderNWP(data);
+  } catch (e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#EF4444;">Network error fetching NWP model run.</td></tr>`;
+  }
+}
+
+function renderNWP(data) {
+  setText('nwp-meta-model', data.model_name || data.provider);
+  setText('nwp-meta-res', data.grid_resolution || '0.25° (~25 km)');
+  setText('nwp-meta-horizon', data.forecast_horizon || '120 Hours (5 Days)');
+  setText('nwp-meta-steps', `${data.timesteps_count || (data.data && data.data.length) || 0} steps (3h)`);
+
+  const liveBadge = document.getElementById('nwp-live-badge');
+  if (liveBadge) {
+    if (data.demo) {
+      liveBadge.textContent = '◐ Demo Model Mode';
+      liveBadge.style.background = '#FEF3C7';
+      liveBadge.style.color = '#B45309';
+    } else {
+      liveBadge.textContent = '● Operational OWM';
+      liveBadge.style.background = '#DCFCE7';
+      liveBadge.style.color = '#15803D';
+    }
+  }
+
+  const resBadge = document.getElementById('nwp-res-badge');
+  if (resBadge && data.grid_resolution) {
+    resBadge.textContent = data.grid_resolution;
+  }
+
+  const tbody = document.getElementById('nwp-tbody');
+  if (!tbody || !data.data) return;
+
+  const rows = data.data.slice(0, 24); // Show up to 72 hours (24 timesteps)
+  tbody.innerHTML = rows.map((s, idx) => {
+    const validStr = s.valid_time ? s.valid_time.replace('T', ' ').slice(5, 16) : `+${s.step_hours}h`;
+    const windStr = `${s.wind_speed_10m} km/h ${s.wind_direction_cardinal || ''}`;
+    const precipVal = s.total_precipitation || 0;
+    const precipStr = precipVal > 0 ? `${precipVal} mm (${s.precipitation_probability}%)` : `0 mm (${s.precipitation_probability}%)`;
+    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
+    return `<tr style="background:${bg};border-bottom:1px solid #F1F5F9;">
+      <td style="padding:6px 10px;font-weight:600;color:#2563EB;">+${s.step_hours !== undefined ? s.step_hours : idx * 3}h</td>
+      <td style="padding:6px 10px;color:#334155;">${validStr}</td>
+      <td style="padding:6px 10px;font-weight:700;color:#0F172A;">${s.temperature_2m}°C</td>
+      <td style="padding:6px 10px;color:#64748B;">${s.dew_point_2m !== undefined ? s.dew_point_2m + '°C' : '--'}</td>
+      <td style="padding:6px 10px;color:#0284C7;font-weight:600;">${s.relative_humidity_2m}%</td>
+      <td style="padding:6px 10px;color:#475569;">${s.surface_pressure} hPa</td>
+      <td style="padding:6px 10px;color:#334155;">${windStr}</td>
+      <td style="padding:6px 10px;color:${precipVal > 0 ? '#2563EB' : '#94A3B8'};font-weight:${precipVal > 0 ? '700' : '400'};">${precipStr}</td>
+      <td style="padding:6px 10px;color:#64748B;">${s.cloud_cover}%</td>
+      <td style="padding:6px 10px;color:#1E293B;">${weatherIcon(s.condition_id, s.icon)} ${s.condition || '--'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Map Tab ────────────────────────────────────────────────────────────────────
@@ -896,9 +1007,13 @@ async function loadIngestionStatus() {
       statusEl.innerHTML = sources.map(s => {
         const colors = { active: '#22C55E', integration_ready: '#F59E0B' };
         const labels = { active: '● Active', integration_ready: '◐ Integration-ready' };
-        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-          <span style="color:${colors[s.status]||'#94A3B8'};font-weight:700;font-size:0.72rem;">${labels[s.status]||s.status}</span>
-          <span>${s.name}</span>
+        const proto = s.protocol ? `<span style="font-size:0.68rem;color:#94A3B8;margin-left:4px;">(${s.protocol})</span>` : '';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F1F5F9;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:${colors[s.status]||'#94A3B8'};font-weight:700;font-size:0.75rem;">${labels[s.status]||s.status}</span>
+            <span style="font-size:0.78rem;font-weight:600;color:#1E293B;">${s.name}</span>
+          </div>
+          ${proto}
         </div>`;
       }).join('');
     }

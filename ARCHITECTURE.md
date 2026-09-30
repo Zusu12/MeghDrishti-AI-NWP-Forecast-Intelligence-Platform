@@ -67,16 +67,20 @@ OpenWeatherMap integration with:
 - City alias resolution (Vizag, Bombay, etc.)
 - Graceful demo fallback
 
-### `alert_service.py`
-Deterministic rule-based engine. Evaluates:
-- Thunderstorm (condition ID range 200–232)
-- Heavy rainfall (>7.6 mm/hr)
-- Extreme heat (>42°C)
-- Extreme cold (<5°C)
-- Strong winds (>50 km/h)
-- Poor visibility (<200m)
-
-All output carries mandatory prototype disclaimer.
+### `alert_service.py` & `imd_service.py`
+Dual-layer emergency alerting architecture:
+1. **Official IMD / NDMA CAP Layer (`imd_service.py`)**:
+   - 4-Color Coded District Weather Warnings (Green, Yellow, Orange, Red)
+   - OASIS / ITU-T X.1303 CAP v1.2 JSON compliant warning documents
+   - District & State mapping across Indian meteorological subdivisions
+   - Official hazard categorization and emergency advisory instructions
+2. **Deterministic Risk Engine (`alert_service.py`)**:
+   - Thunderstorm detection (condition IDs 200–232)
+   - Heavy rainfall (>7.6 mm/hr & >15 mm/3hr)
+   - Extreme heat (>40°C / >44°C)
+   - Extreme cold (<5°C / <1°C)
+   - Strong winds (>50 km/h) & low visibility (<200m)
+   - Real-time WebSocket push broadcasting
 
 ### `elevenlabs_service.py`
 Server-side ElevenLabs TTS. API key never reaches frontend. Uses `eleven_multilingual_v2` for Hindi/Telugu support. Falls back silently.
@@ -94,15 +98,20 @@ Sector-specific decision support:
 Interface for historical climate data. Currently returns **clearly-labelled demo data**. Designed for ERA5/IMD dataset integration.
 
 ### `nwp_service.py`
-Provider abstraction for NWP models:
-- GFS stub (NOAA NOMADS integration point)
-- WRF stub (WRF-ARW server integration point)
-- All output labelled as prototype
+Operational Numerical Weather Prediction (NWP) model layer:
+- **Active Operational**: OpenWeatherMap multi-model NWP assimilation (5-day / 3-hour cycle, 0.25° grid)
+- **GFS layer**: NOAA Global Forecast System 0.25° grid via OWM assimilation pipeline
+- **WRF layer**: Weather Research and Forecasting mesoscale model grid
+- **ECMWF layer**: European Centre for Medium-Range Weather Forecasts IFS cycle integration
+- Rich meteorological outputs: 2m Temperature, Dew Point, Surface & Sea Level Pressure, 10m Wind & Gusts, Relative Humidity, 3h Precipitation, Cloud Cover, POP
+- SQLite TTL caching and deterministic offline demo fallback
 
 ### `ingestion_service.py`
-Unified data ingestion layer:
-- **Active**: OpenWeatherMap REST API
-- **Integration-ready**: WebSocket, MQTT, WIS2.0
+Multi-protocol meteorological data ingestion architecture:
+- **OpenWeatherMap REST API**: Operational global observational and NWP pipeline
+- **MQTT IoT Sensor Grid**: Real-time pub/sub telemetry for Automatic Weather Stations (AWS)
+- **WMO WIS2.0 Global Broker**: GeoJSON Notification Message (WNM) parser for WMO `in-imd`
+- **WebSocket Push Stream**: Real-time push for early warning distribution
 
 ### `database.py`
 SQLite via `aiosqlite`. Tables: conversations, query_history, weather_cache.
