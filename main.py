@@ -31,6 +31,13 @@ import historical_service
 import nwp_service
 import elevenlabs_service
 import ingestion_service
+from nwp.manager import nwp_manager
+from ml.skill_verification import model_skill_service
+from ml.weighting_engine import weighting_engine
+from ml.confidence_engine import confidence_engine
+from ml.extreme_detection import extreme_detector
+from ml.forecast_blender import forecast_blender
+from services.operational_workflow import workflow_service
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -52,6 +59,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"API status: {status}")
     if config.DEMO_MODE:
         logger.warning("⚠️  DEMO MODE ACTIVE — set GEMINI_API_KEY and OPENWEATHERMAP_API_KEY for live data.")
+    # Start automated background operational blending scheduler
+    workflow_service.start_background_scheduler(interval_seconds=10800)
     yield
     logger.info("WeatherGPT shutting down.")
 
@@ -415,6 +424,237 @@ async def get_nwp(
 @app.get("/nwp/status")
 async def nwp_status():
     return nwp_service.get_nwp_status()
+
+
+# ── SIH 2026 Problem Statement SIH26081 Endpoints ──────────────────────────────
+
+@app.get("/api/weather/current")
+@limiter.limit(config.RATE_LIMIT_WEATHER)
+async def api_get_current(
+    request: Request,
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    """Observational reference ground truth from OpenWeatherMap."""
+    return await get_current(request=request, location=location, lat=lat, lon=lon)
+
+
+@app.get("/api/forecast")
+@limiter.limit(config.RATE_LIMIT_WEATHER)
+async def api_get_forecast(
+    request: Request,
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    """Observation-based multi-day baseline forecast."""
+    return await get_forecast(request=request, location=location, lat=lat, lon=lon)
+
+
+@app.get("/api/nwp/models")
+async def api_nwp_models():
+    """List registered NWP models and capabilities (GFS, WRF, ECMWF, Demo)."""
+    return {
+        "models": nwp_manager.get_available_models(),
+        "disclaimer": "Numerical Weather Prediction Model Layer — Independent physical simulations.",
+    }
+
+
+@app.get("/api/nwp/forecast")
+async def api_nwp_model_forecast(
+    model: str = "GFS",
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    """Retrieve normalized forecast from an individual NWP model."""
+    series = await nwp_manager.fetch_model_forecast(model_name=model, location=location, lat=lat, lon=lon)
+    if not series:
+        raise HTTPException(status_code=503, detail=f"Model provider '{model}' unavailable.")
+    return series.model_dump()
+
+
+@app.get("/api/nwp/compare")
+async def api_nwp_compare(
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    """Side-by-side comparison across all NWP models and consensus blend."""
+    series_map, health = await nwp_manager.fetch_all_models(location=location, lat=lat, lon=lon)
+    if not series_map:
+        raise HTTPException(status_code=503, detail="No NWP models currently reachable.")
+    
+    blended = forecast_blender.blend_forecasts(series_map)
+    return {
+        "location": location,
+        "models_available": list(series_map.keys()),
+        "provider_health": health,
+        "individual_models": {m: s.model_dump() for m, s in series_map.items()},
+        "blended_consensus": blended.model_dump(),
+    }
+
+
+@app.get("/api/nwp/blended")
+async def api_nwp_blended(
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    """Consensus blended forecast combining GFS, WRF, and ECMWF with dynamic weights."""
+    series_map, _ = await nwp_manager.fetch_all_models(location=location, lat=lat, lon=lon)
+    if not series_map:
+        raise HTTPException(status_code=503, detail="Unable to retrieve NWP forecasts for blending.")
+    blended = forecast_blender.blend_forecasts(series_map)
+    return blended.model_dump()
+
+
+@app.get("/api/nwp/weights")
+async def api_nwp_weights(
+    variable: str = "temperature",
+    lead_time_hours: int = 24,
+    region: str = "coastal_ap",
+    season: str = "monsoon",
+    weather_regime: str = "normal",
+):
+    """Dynamic model weights for a specific variable and atmospheric situation."""
+    weights_res = weighting_engine.compute_weights(
+        available_models=["GFS", "WRF", "ECMWF"],
+        variable=variable,
+        lead_time_hours=lead_time_hours,
+        region=region,
+        season=season,
+        weather_regime=weather_regime,
+    )
+    return weights_res.model_dump()
+
+
+@app.get("/api/nwp/weight-map")
+async def api_nwp_weight_map(
+    variable: str = "temperature",
+    lead_time_hours: int = 24,
+    season: str = "monsoon",
+    weather_regime: str = "normal",
+):
+    """Spatial model weight distribution across Indian meteorological subdivisions."""
+    return weighting_engine.generate_weight_map(
+        variable=variable,
+        lead_time_hours=lead_time_hours,
+        season=season,
+        weather_regime=weather_regime,
+    )
+
+
+@app.get("/api/nwp/confidence")
+async def api_nwp_confidence(
+    location: Optional[str] = "Visakhapatnam",
+    lead_time_hours: int = 24,
+):
+    """Confidence score and uncertainty analysis for consensus forecast."""
+    series_map, _ = await nwp_manager.fetch_all_models(location=location)
+    if not series_map:
+        raise HTTPException(status_code=503, detail="NWP models unreachable.")
+    blended = forecast_blender.blend_forecasts(series_map)
+    pt = next((p for p in blended.forecast_points if p.lead_time_hours == lead_time_hours), blended.forecast_points[0])
+    return pt.confidence.model_dump()
+
+
+@app.get("/api/nwp/disagreement")
+async def api_nwp_disagreement(
+    location: Optional[str] = "Visakhapatnam",
+    lead_time_hours: int = 24,
+):
+    """Inter-model spread, range, and variance."""
+    series_map, _ = await nwp_manager.fetch_all_models(location=location)
+    if not series_map:
+        raise HTTPException(status_code=503, detail="NWP models unreachable.")
+    blended = forecast_blender.blend_forecasts(series_map)
+    pt = next((p for p in blended.forecast_points if p.lead_time_hours == lead_time_hours), blended.forecast_points[0])
+    return {
+        "lead_time_hours": pt.lead_time_hours,
+        "spread_sigma": pt.confidence.disagreement_spread,
+        "inter_model_range": pt.confidence.inter_model_range,
+        "agreement_score": pt.confidence.agreement_score,
+        "individual_model_values": pt.individual_models,
+    }
+
+
+@app.get("/api/nwp/skill")
+async def api_nwp_skill(
+    model: str = "GFS",
+    region: str = "coastal_ap",
+    season: str = "monsoon",
+    variable: str = "temperature",
+    lead_time: int = 24,
+):
+    """Historical skill metrics (MAE, RMSE, Bias, CSI) for a specific model."""
+    skill = model_skill_service.get_skill(
+        model_name=model,
+        region=region,
+        season=season,
+        variable=variable,
+        lead_time_hours=lead_time,
+    )
+    if not skill:
+        return {"message": "Historical verification data unavailable for configuration."}
+    return skill.model_dump()
+
+
+@app.get("/api/nwp/verification")
+async def api_nwp_verification(
+    variable: str = "temperature",
+    region: str = "coastal_ap",
+    season: str = "monsoon",
+    lead_time: int = 24,
+):
+    """Verification comparison contrasting single models vs Blended Consensus."""
+    comp = model_skill_service.compare_models(
+        variable=variable,
+        region=region,
+        season=season,
+        lead_time_hours=lead_time,
+    )
+    return comp.model_dump()
+
+
+@app.get("/api/extreme-weather")
+async def api_extreme_weather(
+    location: Optional[str] = "Visakhapatnam",
+):
+    """Model-based extreme weather risk indicators from consensus forecasts."""
+    series_map, _ = await nwp_manager.fetch_all_models(location=location)
+    if not series_map:
+        raise HTTPException(status_code=503, detail="NWP models unreachable.")
+    blended = forecast_blender.blend_forecasts(series_map)
+    all_alerts = []
+    for pt in blended.forecast_points:
+        all_alerts.extend([a.model_dump() for a in pt.extreme_alerts])
+    return {
+        "location": location,
+        "overall_summary": blended.extreme_risk_summary,
+        "active_alerts_count": len(all_alerts),
+        "alerts": all_alerts,
+        "disclaimer": (
+            "MODEL-BASED RISK GUIDANCE — Generated algorithmically by multi-model NWP consensus. "
+            "Not an official government warning. Refer to IMD/NDMA for statutory alerts."
+        ),
+    }
+
+
+@app.get("/api/workflow/status")
+async def api_workflow_status():
+    """Execution status and telemetry of the operational blending pipeline."""
+    return workflow_service.get_status().model_dump()
+
+
+@app.post("/api/workflow/run")
+async def api_workflow_run(
+    location: Optional[str] = "Visakhapatnam",
+):
+    """Manually trigger an operational forecast blending cycle."""
+    status, _ = await workflow_service.execute_blending_cycle(location=location, execution_type="MANUAL_TRIGGER")
+    return status.model_dump()
 
 
 @app.websocket("/ws/alerts")

@@ -1,0 +1,44 @@
+# Deployment Specification
+## Smart India Hackathon 2026 — Problem Statement SIH26081
+
+---
+
+## 1. Local Development
+
+```powershell
+# 1. Activate virtual environment
+.\venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Copy environment configuration
+copy .env.example .env
+
+# 4. Run tests
+pytest
+
+# 5. Start FastAPI application
+python main.py
+```
+App runs at `http://localhost:8000`.
+
+---
+
+## 2. Docker Deployment
+
+```bash
+# Build image
+docker build -t sih-nwp-blending .
+
+# Run container
+docker run -p 8000:8000 --env-file .env sih-nwp-blending
+```
+
+---
+
+## 3. Cloud Deployment (Railway / PaaS)
+
+- Platform detects `Dockerfile` and `railway.json`.
+- Dynamic port assignment via `$PORT`.
+- Host binds to `0.0.0.0`.

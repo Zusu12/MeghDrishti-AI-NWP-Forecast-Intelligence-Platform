@@ -1,75 +1,30 @@
 /**
- * app.js — WeatherGPT Frontend
- * All API calls go through FastAPI backend — no keys in frontend.
- * Voice output via ElevenLabs (backend /voice endpoint) with browser fallback.
- * Voice input via browser SpeechRecognition.
- * Interactive Leaflet map with click-to-weather & GPS location.
+ * static/app.js — SIH26081 Scientific Forecast Intelligence Dashboard
+ * Implements Multi-Model NWP Blending, Uncertainty Quantification,
+ * Model Comparison, Weight Maps, Verification Analytics, and Operational Telemetry.
  */
 
 'use strict';
 
-// ── State ──────────────────────────────────────────────────────────────────────
+// ── Application State ──────────────────────────────────────────────────────────
 const state = {
-  language: 'en',
   location: 'Visakhapatnam',
-  lat: null,
-  lon: null,
-  sessionId: crypto.randomUUID(),
+  lat: 17.6868,
+  lon: 83.2185,
   isLoading: false,
-  map: null,
-  mapMarker: null,
-  forecastChart: null,
-  rainChart: null,
-  climateTempChart: null,
-  climateRainChart: null,
-  climateHumChart: null,
-  recognition: null,
-  isListening: false,
-  currentAudio: null,
-  wsAlerts: null,
-  demoMode: false,
+  gisMap: null,
+  gisMarker: null,
+  charts: {
+    forecast: null,
+    comparison: null,
+    verification: null,
+  },
+  latestBlendedData: null,
+  latestObservationData: null,
 };
 
-// ── Language labels & translations ─────────────────────────────────────────────
-const LANG_LABELS = {
-  en: { placeholder: 'Ask WeatherGPT… (e.g. Will it rain tomorrow?)', welcome: 'Ask anything about weather!' },
-  hi: { placeholder: 'WeatherGPT से पूछें… (उदा. क्या कल बारिश होगी?)', welcome: 'मौसम के बारे में कुछ भी पूछें!' },
-  te: { placeholder: 'WeatherGPT ని అడగండి… (ఉదా. రేపు వర్షం పడుతుందా?)', welcome: 'వాతావరణం గురించి ఏదైనా అడగండి!' },
-};
-
-const QUICK_QUESTIONS = {
-  en: [
-    { icon: '☔', text: 'Will it rain tomorrow?' },
-    { icon: '🌡️', text: 'What is the temperature today?' },
-    { icon: '🚨', text: 'Is there any severe weather risk?' },
-    { icon: '🌾', text: 'Is it suitable for farming tomorrow?' },
-    { icon: '✈️', text: 'Give me an aviation weather briefing' },
-    { icon: '🌊', text: 'Is it safe for marine activities?' },
-    { icon: '📊', text: 'Show the climate trend' },
-    { icon: '📍', text: 'Weather near me' },
-  ],
-  hi: [
-    { icon: '☔', text: 'क्या कल बारिश होगी?' },
-    { icon: '🌡️', text: 'आज का तापमान क्या है?' },
-    { icon: '🚨', text: 'कोई मौसम चेतावनी है?' },
-    { icon: '🌾', text: 'क्या कल खेती के लिए अच्छा है?' },
-    { icon: '✈️', text: 'विमानन मौसम जानकारी दें' },
-    { icon: '🌊', text: 'समुद्री यात्रा के लिए मौसम?' },
-    { icon: '📍', text: 'मेरे पास का मौसम' },
-  ],
-  te: [
-    { icon: '☔', text: 'రేపు వర్షం పడుతుందా?' },
-    { icon: '🌡️', text: 'నేడు ఉష్ణోగ్రత ఎంత?' },
-    { icon: '🚨', text: 'తీవ్రమైన వాతావరణ హెచ్చరికలు ఉన్నాయా?' },
-    { icon: '🌾', text: 'రేపు వ్యవసాయానికి అనుకూలంగా ఉంటుందా?' },
-    { icon: '✈️', text: 'విమానయాన వాతావరణ సారాంశం ఇవ్వండి' },
-    { icon: '🌊', text: 'సముద్ర యాత్రకు వాతావరణం అనుకూలంగా ఉందా?' },
-    { icon: '📍', text: 'నా సమీపంలో వాతావరణం' },
-  ],
-};
-
-// ── Weather icon mapper ────────────────────────────────────────────────────────
-function weatherIcon(conditionId, icon) {
+// ── Weather Icon Mapper ───────────────────────────────────────────────────────
+function getWeatherIcon(conditionId, isDay = true) {
   const id = conditionId || 800;
   if (id >= 200 && id < 300) return '⛈️';
   if (id >= 300 && id < 400) return '🌦️';
@@ -78,14 +33,36 @@ function weatherIcon(conditionId, icon) {
   if (id >= 512 && id < 600) return '🌧️';
   if (id >= 600 && id < 700) return '❄️';
   if (id >= 700 && id < 800) return '🌫️';
-  if (id === 800) return '☀️';
-  if (id === 801) return '🌤️';
+  if (id === 800) return isDay ? '☀️' : '🌙';
+  if (id === 801) return isDay ? '🌤️' : '☁️';
   if (id === 802) return '⛅';
   if (id >= 803) return '☁️';
-  return '🌤️';
+  return '⛅';
 }
 
-// ── Tab switching ──────────────────────────────────────────────────────────────
+// ── Toast Notification ────────────────────────────────────────────────────────
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.style.cssText = `
+    background: ${type === 'error' ? '#EF4444' : type === 'success' ? '#10B981' : '#2563EB'};
+    color: white; padding: 10px 18px; border-radius: 999px; margin-top: 8px;
+    font-size: 0.8rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: fadeIn 0.3s ease;
+  `;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+// ── Tab Switching ─────────────────────────────────────────────────────────────
 function switchTab(tabId) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -96,1047 +73,608 @@ function switchTab(tabId) {
   const btn = document.querySelector(`[data-tab="${tabId}"]`);
   if (btn) btn.classList.add('active');
 
-  // Lazy-load tab data
-  if (tabId === 'forecast') loadForecast();
-  if (tabId === 'alerts') loadAlerts();
-  if (tabId === 'map') {
-    initMap();
-    setTimeout(() => { if (state.map) state.map.invalidateSize(); }, 250);
-  }
-  if (tabId === 'climate') loadClimate();
+  // Trigger data loader for the active tab
+  if (tabId === 'dashboard') loadDashboard();
+  else if (tabId === 'forecast') renderForecastChart();
+  else if (tabId === 'comparison') loadModelComparison();
+  else if (tabId === 'weightmaps') loadWeightMap();
+  else if (tabId === 'verification') loadVerification();
+  else if (tabId === 'extremes') loadExtremes();
+  else if (tabId === 'workflow') loadWorkflow();
+  else if (tabId === 'map') initGISMap();
 }
 
-// ── Language switching ─────────────────────────────────────────────────────────
-document.querySelectorAll('.lang-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const lang = btn.dataset.lang;
-    state.language = lang;
-    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    const input = document.getElementById('chat-input');
-    const labels = LANG_LABELS[lang];
-    if (input) input.placeholder = labels.placeholder;
-
-    updateQuickActions(lang);
-    showToast(`Language: ${btn.textContent.trim()}`, 'info');
-  });
-});
-
-function updateQuickActions(lang) {
-  const container = document.getElementById('quick-actions');
-  if (!container) return;
-  const questions = QUICK_QUESTIONS[lang] || QUICK_QUESTIONS['en'];
-  container.innerHTML = questions.map(q =>
-    `<button class="quick-btn" onclick="sendQuick('${q.text.replace(/'/g, "\\'")}')">${q.icon} ${q.text}</button>`
-  ).join('');
+// ── Location Application ──────────────────────────────────────────────────────
+function applyLocationChange() {
+  const input = document.getElementById('global-location-input');
+  if (!input || !input.value.trim()) return;
+  state.location = input.value.trim();
+  showToast(`Loading multi-model forecasts for ${state.location}...`, 'info');
+  loadDashboard();
 }
 
-// ── Geolocation ("Weather Near Me") ────────────────────────────────────────────
-async function requestCurrentLocation() {
+function requestCurrentLocation() {
   if (!navigator.geolocation) {
     showToast('Geolocation is not supported by your browser.', 'error');
     return;
   }
-  showToast('Detecting location via GPS…', 'info');
+  showToast('Detecting GPS location…', 'info');
   navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      const { latitude, longitude } = pos.coords;
-      try {
-        const res = await fetch(`/weather/current?lat=${latitude}&lon=${longitude}`);
-        if (!res.ok) throw new Error('Could not fetch location weather');
-        const w = await res.json();
-        state.location = w.location;
-        state.lat = latitude;
-        state.lon = longitude;
-        updateHeroWeather(w);
-        updateNavLocation(w.location);
-        if (state.map) {
-          addMapMarker(latitude, longitude, w.location, `${w.temperature}°C`, w.condition);
-        }
-        showToast(`📍 Located: ${w.location}`, 'success');
-      } catch (err) {
-        showToast('Failed to retrieve weather for your coordinates.', 'error');
-      }
+    async pos => {
+      state.lat = pos.coords.latitude;
+      state.lon = pos.coords.longitude;
+      state.location = `Lat ${state.lat.toFixed(2)}, Lon ${state.lon.toFixed(2)}`;
+      const inp = document.getElementById('global-location-input');
+      if (inp) inp.value = state.location;
+      loadDashboard();
     },
-    (err) => {
-      showToast('Location access denied or unavailable.', 'warning');
+    err => {
+      showToast('Could not access GPS location.', 'error');
     },
-    { timeout: 10000 }
+    { timeout: 8000 }
   );
 }
 
-// ── Chat ───────────────────────────────────────────────────────────────────────
-function sendQuick(text) {
-  const input = document.getElementById('chat-input');
-  if (input) {
-    input.value = text;
-    switchTab('chat');
-  }
-  if (text.includes('near me') || text.includes('पास') || text.includes('సమీపంలో')) {
-    if (!state.lat && navigator.geolocation) {
-      requestCurrentLocation();
-    }
-  }
-  sendChat();
-}
-
-async function sendChat() {
-  const input = document.getElementById('chat-input');
-  const message = input ? input.value.trim() : '';
-  if (!message || state.isLoading) return;
-
-  input.value = '';
-  autoResize(input);
-  appendMessage('user', message);
-  showTyping();
-  state.isLoading = true;
-  setSendLoading(true);
+// ── 1. Dashboard Loader ───────────────────────────────────────────────────────
+async function loadDashboard() {
+  const loc = state.location;
+  document.getElementById('dash-location-title').textContent = loc;
 
   try {
-    const payload = {
-      message,
-      language: state.language,
-      session_id: state.sessionId,
-      location: state.location,
-    };
-    if (state.lat && state.lon) {
-      payload.lat = state.lat;
-      payload.lon = state.lon;
+    // 1. Fetch Observational Ground Truth
+    const obsUrl = `/api/weather/current?location=${encodeURIComponent(loc)}`;
+    const obsRes = await fetch(obsUrl);
+    if (obsRes.ok) {
+      const obsData = await obsRes.json();
+      state.latestObservationData = obsData;
+      renderObservationCard(obsData);
     }
 
-    const res = await fetch('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    // 2. Fetch Consensus Blended Forecast
+    const blendUrl = `/api/nwp/blended?location=${encodeURIComponent(loc)}`;
+    const blendRes = await fetch(blendUrl);
+    if (blendRes.ok) {
+      const blendData = await blendRes.json();
+      state.latestBlendedData = blendData;
+      renderBlendedCard(blendData);
+      renderDashboardTimeline(blendData);
+      renderDynamicWeights(blendData);
+    }
+  } catch (err) {
+    console.error('Error loading dashboard:', err);
+    showToast('Failed to load multi-model forecast data.', 'error');
+  }
+}
+
+function renderObservationCard(data) {
+  document.getElementById('obs-temp').textContent = `${data.temperature}°C`;
+  document.getElementById('obs-condition').textContent = data.condition || 'Clear Sky';
+  document.getElementById('obs-feels').textContent = `Feels like ${data.feels_like}°C`;
+  document.getElementById('obs-humidity').textContent = `${data.humidity}%`;
+  document.getElementById('obs-wind').textContent = `${data.wind_speed} km/h`;
+  document.getElementById('obs-pressure').textContent = `${data.pressure} hPa`;
+  document.getElementById('obs-rain').textContent = `${data.rain_1h || 0.0} mm`;
+  document.getElementById('obs-icon').textContent = getWeatherIcon(data.condition_id);
+}
+
+function renderBlendedCard(data) {
+  const points = data.forecast_points || [];
+  if (!points.length) return;
+
+  const first = points[0];
+  document.getElementById('blend-temp').textContent = `${first.temperature}°C`;
+  document.getElementById('blend-condition').textContent = `Consensus (+3h): ${first.temperature}°C, PoP ${first.precipitation_probability}%`;
+  document.getElementById('blend-rain-signal').innerHTML = `🌧️ Rain Expected: <strong>${first.precipitation} mm</strong> (PoP ${first.precipitation_probability}%)`;
+  document.getElementById('blend-wind').textContent = `${first.wind_speed} km/h (${first.wind_direction}°)`;
+  document.getElementById('blend-pressure').textContent = `${first.pressure} hPa`;
+  document.getElementById('blend-spread').textContent = `σ = ${first.confidence.disagreement_spread}°C (${first.confidence.category})`;
+
+  // Badges
+  const regimeBadge = document.getElementById('dash-regime-badge');
+  regimeBadge.textContent = `REGIME: ${data.detected_regime.toUpperCase()}`;
+
+  const confBadge = document.getElementById('dash-conf-badge');
+  confBadge.textContent = `CONFIDENCE: ${data.overall_confidence} (${first.confidence.score_pct}%)`;
+  confBadge.className = `metric-pill conf-pill conf-${data.overall_confidence.toLowerCase()}`;
+
+  // Stat numbers
+  document.getElementById('stat-spread').textContent = `${first.confidence.disagreement_spread}°C`;
+  document.getElementById('stat-range').textContent = `${first.confidence.inter_model_range}°C`;
+  const factorPct = Math.round(first.confidence.agreement_score * 100);
+  document.getElementById('agreement-factor-bar').style.width = `${factorPct}%`;
+  document.getElementById('agreement-factor-text').textContent = `${factorPct}% Agreement across ${first.confidence.active_models_count} NWP models`;
+
+  // Risk Guidance
+  const alertsList = document.getElementById('dash-alerts-list');
+  alertsList.innerHTML = '';
+  if (data.extreme_risk_summary && data.extreme_risk_summary.length > 0) {
+    data.extreme_risk_summary.forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'alert-item alert-yellow';
+      div.innerHTML = `<div class="alert-badge">ALERT</div><div class="alert-content"><strong>Risk Signal</strong><div>${msg}</div></div>`;
+      alertsList.appendChild(div);
     });
-
-    removeTyping();
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-      appendMessage('assistant', `⚠️ ${err.detail || 'Could not get a response. Please try again.'}`, null, true);
-      return;
-    }
-
-    const data = await res.json();
-
-    // Update hero weather
-    if (data.weather) {
-      updateHeroWeather(data.weather);
-      state.location = data.location || state.location;
-      updateNavLocation(state.location);
-    }
-
-    // Show alert in hero
-    if (data.alerts && data.alerts.alert) {
-      showHeroAlert(data.alerts);
-    }
-
-    // Render response
-    appendMessage('assistant', data.response, data);
-
-    // Update demo mode
-    if (data.demo_mode) {
-      const banner = document.getElementById('demo-banner');
-      if (banner) banner.style.display = 'block';
-    }
-
-    // Log latency
-    const lat = data.latency || {};
-    console.log(`⏱️ Total: ${lat.total_ms}ms | Weather: ${lat.weather_ms}ms | Gemini: ${lat.gemini_response_ms}ms`);
-
-  } catch (e) {
-    removeTyping();
-    appendMessage('assistant', '⚠️ Network error. Please check your connection and try again.', null, true);
-    console.error('Chat error:', e);
-  } finally {
-    state.isLoading = false;
-    setSendLoading(false);
-  }
-}
-
-function formatMarkdown(str) {
-  if (!str) return '';
-  let safe = str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  // Bold
-  safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  safe = safe.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  // Line breaks
-  safe = safe.replace(/\n/g, '<br>');
-  return safe;
-}
-
-function appendMessage(role, text, data = null, isError = false) {
-  const container = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.className = `message ${role}`;
-
-  const bubble = document.createElement('div');
-  bubble.className = 'message-bubble';
-  bubble.innerHTML = formatMarkdown(text);
-  if (isError) bubble.style.background = '#FEF2F2';
-  div.appendChild(bubble);
-
-  if (role === 'assistant' && !isError) {
-    const meta = document.createElement('div');
-    meta.className = 'message-meta';
-    meta.innerHTML = `<span>WeatherGPT · ${state.language.toUpperCase()}</span>`;
-
-    // Listen button
-    const listenBtn = document.createElement('button');
-    listenBtn.className = 'listen-btn';
-    listenBtn.innerHTML = '🔊 Listen';
-    listenBtn.addEventListener('click', () => playTTS(text, listenBtn));
-    meta.appendChild(listenBtn);
-
-    div.appendChild(meta);
-  }
-
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function showTyping() {
-  const container = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.id = 'typing-indicator';
-  div.className = 'message assistant';
-  div.innerHTML = `<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function removeTyping() {
-  const t = document.getElementById('typing-indicator');
-  if (t) t.remove();
-}
-
-function setSendLoading(loading) {
-  const btn = document.getElementById('send-btn');
-  if (!btn) return;
-  btn.innerHTML = loading
-    ? '<div class="spinner" style="width:16px;height:16px;border-width:2px;"></div>'
-    : '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" /></svg>';
-}
-
-function handleInputKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChat();
-  }
-}
-
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-
-// ── Hero weather update ────────────────────────────────────────────────────────
-function updateHeroWeather(w) {
-  setText('hero-temp', `${w.temperature}°`);
-  setText('hero-condition', w.condition);
-  setText('hero-location', `${w.location}, ${w.country || 'IN'}`);
-  setText('hero-feels', `Feels like ${w.feels_like}°C`);
-  setText('hero-humidity', `${w.humidity}%`);
-  setText('hero-wind', `${w.wind_speed} km/h`);
-  setText('hero-vis', `${(w.visibility / 1000).toFixed(1)} km`);
-  setText('hero-cloud', `${w.cloud_cover}%`);
-  setText('hero-icon', weatherIcon(w.condition_id, w.icon));
-}
-
-function showHeroAlert(alerts) {
-  const el = document.getElementById('hero-alert');
-  const textEl = document.getElementById('hero-alert-text');
-  if (el && textEl && alerts.alerts && alerts.alerts.length > 0) {
-    textEl.textContent = alerts.alerts[0].message;
-    el.classList.remove('hidden');
-    el.style.display = 'inline-flex';
-    const colors = { HIGH: '#EF4444', WARNING: '#F59E0B', WATCH: '#3B82F6', INFO: '#22C55E' };
-    el.style.background = (colors[alerts.severity] || '#EF4444') + '33';
-    el.style.borderColor = (colors[alerts.severity] || '#EF4444') + '66';
-  }
-}
-
-function updateNavLocation(loc) {
-  setText('nav-location', loc);
-}
-
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
-
-// ── Voice Output — ElevenLabs & Browser Fallback ───────────────────────────────
-async function playTTS(text, btn) {
-  // If already playing, stop and reset
-  if (state.currentAudio) {
-    state.currentAudio.pause();
-    state.currentAudio = null;
-    if (btn) {
-      btn.classList.remove('playing');
-      btn.innerHTML = '🔊 Listen';
-    }
-    return;
-  }
-
-  if (window.speechSynthesis && window.speechSynthesis.speaking) {
-    window.speechSynthesis.cancel();
-    if (btn) {
-      btn.classList.remove('playing');
-      btn.innerHTML = '🔊 Listen';
-    }
-    return;
-  }
-
-  if (btn) {
-    btn.classList.add('playing');
-    btn.textContent = '⏸ Stop';
-  }
-
-  try {
-    const cleanText = text.replace(/<[^>]*>/g, '').replace(/\*/g, '');
-    const res = await fetch('/voice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: cleanText, language: state.language }),
-    });
-
-    if (!res.ok) {
-      // Gracefully fall back to browser SpeechSynthesis
-      fallbackTTS(cleanText, btn);
-      return;
-    }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    state.currentAudio = audio;
-
-    audio.onended = () => {
-      if (btn) { btn.classList.remove('playing'); btn.innerHTML = '🔊 Listen'; }
-      URL.revokeObjectURL(url);
-      state.currentAudio = null;
-    };
-
-    audio.onerror = () => {
-      fallbackTTS(cleanText, btn);
-    };
-
-    await audio.play();
-
-  } catch (e) {
-    console.warn('ElevenLabs error, using browser speech synthesis fallback:', e);
-    const cleanText = text.replace(/<[^>]*>/g, '').replace(/\*/g, '');
-    fallbackTTS(cleanText, btn);
-  }
-}
-
-function fallbackTTS(text, btn = null) {
-  if (!window.speechSynthesis) {
-    if (btn) { btn.classList.remove('playing'); btn.innerHTML = '🔊 Listen'; }
-    showToast('Voice synthesis is not supported in this browser.', 'warning');
-    return;
-  }
-  window.speechSynthesis.cancel();
-
-  // Clean and expand abbreviations for smooth speech
-  let clean = text
-    .replace(/<[^>]*>/g, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/#{1,6}\s*/g, '')
-    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
-    .trim();
-
-  if (state.language === 'te') {
-    clean = clean
-      .replace(/(\d+(?:\.\d+)?)\s*°\s*C/g, '$1 డిగ్రీల సెల్సియస్')
-      .replace(/(\d+(?:\.\d+)?)\s*°/g, '$1 డిగ్రీలు')
-      .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, '$1 కిలోమీటర్లు ప్రతి గంటకు')
-      .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1 శాతం');
-  } else if (state.language === 'hi') {
-    clean = clean
-      .replace(/(\d+(?:\.\d+)?)\s*°\s*C/g, '$1 डिग्री सेल्सियस')
-      .replace(/(\d+(?:\.\d+)?)\s*°/g, '$1 डिग्री')
-      .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, '$1 किलोमीटर प्रति घंटा')
-      .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1 प्रतिशत');
   } else {
-    clean = clean
-      .replace(/(\d+(?:\.\d+)?)\s*°\s*C/g, '$1 degrees Celsius')
-      .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, '$1 kilometers per hour')
-      .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1 percent');
-  }
-
-  const utt = new SpeechSynthesisUtterance(clean);
-  const langCodes = { en: 'en-IN', hi: 'hi-IN', te: 'te-IN' };
-  utt.lang = langCodes[state.language] || 'en-IN';
-  utt.rate = 0.92;
-  utt.pitch = 1.0;
-
-  // Try to find matching voice
-  const voices = window.speechSynthesis.getVoices();
-  const match = voices.find(v => v.lang.startsWith(state.language) || v.lang.includes(langCodes[state.language]));
-  if (match) utt.voice = match;
-
-  utt.onend = () => {
-    if (btn) { btn.classList.remove('playing'); btn.innerHTML = '🔊 Listen'; }
-  };
-  utt.onerror = () => {
-    if (btn) { btn.classList.remove('playing'); btn.innerHTML = '🔊 Listen'; }
-  };
-
-  window.speechSynthesis.speak(utt);
-}
-
-// ── Voice Input — SpeechRecognition ───────────────────────────────────────────
-function toggleVoice() {
-  if (state.isListening) {
-    stopListening();
-  } else {
-    startListening();
+    alertsList.innerHTML = '<div style="color:#64748B; font-size:0.78rem; padding:8px;">No critical severe weather threshold breaches detected in next 24h.</div>';
   }
 }
 
-function startListening() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    showToast('Voice recognition not supported in this browser. Please use Chrome.', 'error');
-    return;
-  }
+function renderDynamicWeights(data) {
+  const points = data.forecast_points || [];
+  if (!points.length) return;
+  const weights = points[0].model_weights || { GFS: 0.33, WRF: 0.33, ECMWF: 0.34 };
 
-  const langCodes = { en: 'en-IN', hi: 'hi-IN', te: 'te-IN' };
-  const recognition = new SpeechRecognition();
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.lang = langCodes[state.language] || 'en-IN';
-  state.recognition = recognition;
+  const gfsPct = Math.round((weights.GFS || 0.33) * 100);
+  const wrfPct = Math.round((weights.WRF || 0.33) * 100);
+  const ecmwfPct = Math.round((weights.ECMWF || 0.34) * 100);
 
-  recognition.onstart = () => {
-    state.isListening = true;
-    const micBtn = document.getElementById('mic-btn');
-    if (micBtn) micBtn.classList.add('listening');
-    const voiceStatus = document.getElementById('voice-status');
-    if (voiceStatus) voiceStatus.classList.remove('hidden');
-  };
+  document.getElementById('wt-val-gfs').textContent = `${gfsPct}%`;
+  document.getElementById('wt-fill-gfs').style.width = `${gfsPct}%`;
 
-  recognition.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
-    const input = document.getElementById('chat-input');
-    if (input) { input.value = transcript; autoResize(input); }
-  };
+  document.getElementById('wt-val-wrf').textContent = `${wrfPct}%`;
+  document.getElementById('wt-fill-wrf').style.width = `${wrfPct}%`;
 
-  recognition.onend = () => {
-    state.isListening = false;
-    const micBtn = document.getElementById('mic-btn');
-    if (micBtn) micBtn.classList.remove('listening');
-    const voiceStatus = document.getElementById('voice-status');
-    if (voiceStatus) voiceStatus.classList.add('hidden');
-    state.recognition = null;
-    const input = document.getElementById('chat-input');
-    if (input && input.value.trim()) sendChat();
-  };
-
-  recognition.onerror = (e) => {
-    state.isListening = false;
-    const micBtn = document.getElementById('mic-btn');
-    if (micBtn) micBtn.classList.remove('listening');
-    const voiceStatus = document.getElementById('voice-status');
-    if (voiceStatus) voiceStatus.classList.add('hidden');
-    showToast(`Voice error: ${e.error}`, 'error');
-  };
-
-  recognition.start();
+  document.getElementById('wt-val-ecmwf').textContent = `${ecmwfPct}%`;
+  document.getElementById('wt-fill-ecmwf').style.width = `${ecmwfPct}%`;
 }
 
-function stopListening() {
-  if (state.recognition) {
-    state.recognition.stop();
-  }
-}
+function renderDashboardTimeline(data) {
+  const scroller = document.getElementById('dash-timeline-scroller');
+  scroller.innerHTML = '';
 
-// ── Forecast Tab ──────────────────────────────────────────────────────────────
-async function loadForecast() {
-  const location = document.getElementById('fc-location')?.value.trim() || state.location;
-  state.location = location;
-  updateNavLocation(location);
-
-  try {
-    const res = await fetch(`/weather/forecast?location=${encodeURIComponent(location)}`);
-    if (!res.ok) { showToast('Could not load forecast', 'error'); return; }
-    const forecast = await res.json();
-    renderForecastScroll(forecast);
-    renderForecastCharts(forecast);
-  } catch (e) {
-    showToast('Network error loading forecast', 'error');
-  }
-}
-
-function renderForecastScroll(forecast) {
-  const container = document.getElementById('forecast-scroll');
-  if (!container) return;
-  container.innerHTML = forecast.slice(0, 10).map(slot => {
-    const d = new Date(slot.dt * 1000);
-    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    const day = d.toLocaleDateString([], { weekday: 'short' });
-    return `
-      <div class="forecast-card">
-        <div class="time">${day}<br>${time}</div>
-        <div class="icon">${weatherIcon(slot.condition_id, slot.icon)}</div>
-        <div class="temp">${slot.temperature}°C</div>
-        <div class="pop">💧 ${Math.round((slot.pop || 0) * 100)}%</div>
-        <div class="cond">${slot.condition}</div>
-      </div>`;
-  }).join('');
-}
-
-function renderForecastCharts(forecast) {
-  const labels = forecast.slice(0, 14).map(s => {
-    const d = new Date(s.dt * 1000);
-    return d.toLocaleDateString([], { weekday: 'short' }) + ' ' +
-           d.toLocaleTimeString([], { hour: '2-digit', hour12: true });
+  const points = (data.forecast_points || []).slice(0, 8); // Next 24 hours
+  points.forEach(pt => {
+    const timeStr = pt.valid_time ? pt.valid_time.split(' ')[1] || pt.valid_time : `+${pt.lead_time_hours}h`;
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    card.innerHTML = `
+      <div class="timeline-hour">+${pt.lead_time_hours}h</div>
+      <div class="timeline-icon">${getWeatherIcon(pt.precipitation > 2.0 ? 501 : 800)}</div>
+      <div class="timeline-temp">${pt.temperature}°C</div>
+      <div class="timeline-rain">${pt.precipitation} mm</div>
+      <div style="font-size:0.65rem; color:#64748B; margin-top:3px;">PoP ${pt.precipitation_probability}%</div>
+    `;
+    scroller.appendChild(card);
   });
-  const temps = forecast.slice(0, 14).map(s => s.temperature);
-  const pops = forecast.slice(0, 14).map(s => Math.round((s.pop || 0) * 100));
-
-  destroyChart('forecastChart');
-  destroyChart('rainChart');
-
-  const chartDefaults = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { ticks: { font: { size: 10 }, maxRotation: 45 }, grid: { display: false } },
-      y: { ticks: { font: { size: 10 } }, grid: { color: '#F1F5F9' } },
-    },
-  };
-
-  const fcEl = document.getElementById('forecast-chart');
-  if (fcEl) {
-    state.forecastChart = new Chart(fcEl, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          data: temps,
-          borderColor: '#2563EB',
-          backgroundColor: 'rgba(37,99,235,0.08)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointBackgroundColor: '#2563EB',
-        }],
-      },
-      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: '°C', font: { size: 10 } } } } },
-    });
-  }
-
-  const rcEl = document.getElementById('rain-chart');
-  if (rcEl) {
-    state.rainChart = new Chart(rcEl, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data: pops,
-          backgroundColor: pops.map(p => p >= 70 ? 'rgba(37,99,235,0.8)' : p >= 40 ? 'rgba(14,165,233,0.6)' : 'rgba(148,163,184,0.4)'),
-          borderRadius: 4,
-        }],
-      },
-      options: chartDefaults,
-    });
-  }
 }
 
-// ── Alerts Tab ─────────────────────────────────────────────────────────────────
-async function loadAlerts() {
-  const location = document.getElementById('alert-location')?.value.trim() || state.location;
-  const container = document.getElementById('alert-results');
-  if (!container) return;
-  container.innerHTML = `<div class="empty-state"><div class="spinner" style="border-color:rgba(37,99,235,0.3);border-top-color:#2563EB;"></div><div class="empty-text">Checking weather risks…</div></div>`;
-
-  try {
-    const res = await fetch(`/alerts?location=${encodeURIComponent(location)}`);
-    if (!res.ok) { container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Could not load alerts</div></div>`; return; }
-    const data = await res.json();
-    renderAlerts(container, data, location);
-  } catch (e) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔌</div><div class="empty-text">Network error</div></div>`;
-  }
-}
-
-function renderAlerts(container, data, location) {
-  const severityColors = { HIGH: '#EF4444', WARNING: '#F59E0B', WATCH: '#3B82F6', INFO: '#22C55E' };
-  const color = severityColors[data.severity] || '#22C55E';
-
-  let html = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div>
-        <div style="font-weight:700;font-size:1rem;">${location}</div>
-        <div style="font-size:0.72rem;color:#64748B;">Multi-Hazard Threat Evaluation & Official CAP Feed</div>
-      </div>
-      <div style="background:${color};color:white;border-radius:999px;padding:4px 14px;font-size:0.72rem;font-weight:700;">${data.severity}</div>
-    </div>`;
-
-  // Official IMD 4-Color Warning & NDMA CAP Bulletin Card
-  if (data.imd_warning) {
-    const imd = data.imd_warning;
-    html += `
-      <div style="background:${imd.bg_hex};border:2px solid ${imd.color_hex};border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 6px rgba(0,0,0,0.04);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:1.2rem;">🏛️</span>
-            <div>
-              <span style="font-size:0.75rem;font-weight:800;color:${imd.color_hex};letter-spacing:0.04em;">OFFICIAL IMD / NDMA CAP WARNING</span>
-              <div style="font-size:0.68rem;color:#475569;">${imd.sender} · ${imd.area}</div>
-            </div>
-          </div>
-          <div style="background:${imd.color_hex};color:white;font-weight:800;font-size:0.75rem;padding:4px 12px;border-radius:20px;letter-spacing:0.03em;">
-            ${imd.color_code} ALERT (${imd.action.toUpperCase()})
-          </div>
-        </div>
-        <div style="font-size:0.88rem;font-weight:700;color:#1E293B;margin-bottom:6px;line-height:1.4;">
-          ${imd.headline}
-        </div>
-        <div style="font-size:0.78rem;color:#334155;line-height:1.5;margin-bottom:8px;">
-          ${imd.instruction}
-        </div>
-        <div style="font-size:0.68rem;color:#64748B;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;border-top:1px solid rgba(0,0,0,0.06);padding-top:6px;">
-          <span>CAP ID: <code>${imd.bulletin_id || '--'}</code></span>
-          <span>Emergency Helpline: <strong>112</strong> · NDMA: <strong>1078</strong></span>
-        </div>
-      </div>`;
-  }
-
-  if (!data.alert && (!data.alerts || data.alerts.length === 0) && (!data.imd_warning || data.imd_warning.color_code === 'GREEN')) {
-    html += `
-      <div class="alert-card INFO">
-        <div style="font-size:1.4rem;">✅</div>
-        <div>
-          <div style="font-weight:600;font-size:0.88rem;">No significant weather risks detected</div>
-          <div style="font-size:0.78rem;color:#64748B;margin-top:4px;">Meteorological variables appear within safe parameters.</div>
-        </div>
-      </div>`;
-  } else {
-    data.alerts.forEach(alert => {
-      html += `
-        <div class="alert-card ${alert.severity}">
-          <div style="font-size:1.4rem;">${alert.icon}</div>
-          <div style="flex:1;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
-              <span style="font-weight:600;font-size:0.88rem;">${alert.type.replace(/_/g,' ').toUpperCase()}</span>
-              <span class="alert-badge ${alert.severity}">${alert.severity}</span>
-            </div>
-            <div style="font-size:0.8rem;color:#475569;line-height:1.5;">${alert.message}</div>
-          </div>
-        </div>`;
-    });
-  }
-
-  if (data.demo) {
-    html += `<div style="text-align:center;font-size:0.68rem;color:#94A3B8;margin-top:8px;">⚠️ Demo data</div>`;
-  }
-
-  container.innerHTML = html;
-}
-
-// ── Climate Tab ────────────────────────────────────────────────────────────────
-async function loadClimate() {
-  const location = document.getElementById('climate-location')?.value.trim() || state.location;
-  const days = parseInt(document.getElementById('climate-days')?.value || '30');
-
-  // Trigger NWP model run in parallel
-  loadNWP();
-
-  try {
-    const res = await fetch(`/climate?location=${encodeURIComponent(location)}&days=${days}`);
-    if (!res.ok) { showToast('Could not load climate data', 'error'); return; }
-    const data = await res.json();
-    renderClimateCharts(data);
-  } catch (e) {
-    showToast('Network error loading climate data', 'error');
-  }
-}
-
-function renderClimateCharts(data) {
-  const { dates, temperature, rainfall, humidity, stats } = data;
-
-  // Stats
-  const statsEl = document.getElementById('climate-stats');
-  if (statsEl) {
-    statsEl.style.display = 'grid';
-    setText('cs-temp', `${stats.avg_temp}°C`);
-    setText('cs-rain', `${stats.total_rainfall} mm`);
-    setText('cs-hum', `${stats.avg_humidity}%`);
-  }
-
-  // Compact labels (every 5th)
-  const labels = dates.map((d, i) => i % 5 === 0 ? new Date(d).toLocaleDateString([], { month:'short', day:'numeric' }) : '');
-
-  destroyChart('climateTempChart');
-  destroyChart('climateRainChart');
-  destroyChart('climateHumChart');
-
-  const baseOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { ticks: { font: { size: 9 }, maxRotation: 0 }, grid: { display: false } },
-      y: { ticks: { font: { size: 9 } }, grid: { color: '#F1F5F9' } },
-    },
-  };
-
-  const ctc = document.getElementById('climate-temp-chart');
-  if (ctc) {
-    state.climateTempChart = new Chart(ctc, {
-      type: 'line',
-      data: { labels, datasets: [{ data: temperature, borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.07)', fill: true, tension: 0.4, pointRadius: 1 }] },
-      options: baseOpts,
-    });
-  }
-
-  const crc = document.getElementById('climate-rain-chart');
-  if (crc) {
-    state.climateRainChart = new Chart(crc, {
-      type: 'bar',
-      data: { labels, datasets: [{ data: rainfall, backgroundColor: 'rgba(14,165,233,0.6)', borderRadius: 2 }] },
-      options: baseOpts,
-    });
-  }
-
-  const chc = document.getElementById('climate-hum-chart');
-  if (chc) {
-    state.climateHumChart = new Chart(chc, {
-      type: 'line',
-      data: { labels, datasets: [{ data: humidity, borderColor: '#06B6D4', backgroundColor: 'rgba(6,182,212,0.07)', fill: true, tension: 0.4, pointRadius: 1 }] },
-      options: baseOpts,
-    });
-  }
-}
-
-// ── NWP Model Integration ──────────────────────────────────────────────────────
-async function loadNWP() {
-  const location = document.getElementById('climate-location')?.value.trim() || state.location;
-  const provider = document.getElementById('nwp-provider-select')?.value || 'owm';
-  const tbody = document.getElementById('nwp-tbody');
-  if (tbody) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#2563EB;">
-      <div class="spinner" style="border-color:rgba(37,99,235,0.3);border-top-color:#2563EB;width:18px;height:18px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>
-      Running numerical model assimilation via OpenWeatherMap…
-    </td></tr>`;
-  }
-
-  try {
-    let url = `/nwp?location=${encodeURIComponent(location)}&provider=${encodeURIComponent(provider)}`;
-    if (state.lat && state.lon && !document.getElementById('climate-location')?.value) {
-      url = `/nwp?lat=${state.lat}&lon=${state.lon}&provider=${encodeURIComponent(provider)}`;
-    }
-    const res = await fetch(url);
-    if (!res.ok) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#EF4444;">Failed to fetch NWP data.</td></tr>`;
-      return;
-    }
-    const data = await res.json();
-    renderNWP(data);
-  } catch (e) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#EF4444;">Network error fetching NWP model run.</td></tr>`;
-  }
-}
-
-function renderNWP(data) {
-  setText('nwp-meta-model', data.model_name || data.provider);
-  setText('nwp-meta-res', data.grid_resolution || '0.25° (~25 km)');
-  setText('nwp-meta-horizon', data.forecast_horizon || '120 Hours (5 Days)');
-  setText('nwp-meta-steps', `${data.timesteps_count || (data.data && data.data.length) || 0} steps (3h)`);
-
-  const liveBadge = document.getElementById('nwp-live-badge');
-  if (liveBadge) {
-    if (data.demo) {
-      liveBadge.textContent = '◐ Demo Model Mode';
-      liveBadge.style.background = '#FEF3C7';
-      liveBadge.style.color = '#B45309';
-    } else {
-      liveBadge.textContent = '● Operational OWM';
-      liveBadge.style.background = '#DCFCE7';
-      liveBadge.style.color = '#15803D';
-    }
-  }
-
-  const resBadge = document.getElementById('nwp-res-badge');
-  if (resBadge && data.grid_resolution) {
-    resBadge.textContent = data.grid_resolution;
-  }
-
-  const tbody = document.getElementById('nwp-tbody');
-  if (!tbody || !data.data) return;
-
-  const rows = data.data.slice(0, 24); // Show up to 72 hours (24 timesteps)
-  tbody.innerHTML = rows.map((s, idx) => {
-    const validStr = s.valid_time ? s.valid_time.replace('T', ' ').slice(5, 16) : `+${s.step_hours}h`;
-    const windStr = `${s.wind_speed_10m} km/h ${s.wind_direction_cardinal || ''}`;
-    const precipVal = s.total_precipitation || 0;
-    const precipStr = precipVal > 0 ? `${precipVal} mm (${s.precipitation_probability}%)` : `0 mm (${s.precipitation_probability}%)`;
-    const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
-    return `<tr style="background:${bg};border-bottom:1px solid #F1F5F9;">
-      <td style="padding:6px 10px;font-weight:600;color:#2563EB;">+${s.step_hours !== undefined ? s.step_hours : idx * 3}h</td>
-      <td style="padding:6px 10px;color:#334155;">${validStr}</td>
-      <td style="padding:6px 10px;font-weight:700;color:#0F172A;">${s.temperature_2m}°C</td>
-      <td style="padding:6px 10px;color:#64748B;">${s.dew_point_2m !== undefined ? s.dew_point_2m + '°C' : '--'}</td>
-      <td style="padding:6px 10px;color:#0284C7;font-weight:600;">${s.relative_humidity_2m}%</td>
-      <td style="padding:6px 10px;color:#475569;">${s.surface_pressure} hPa</td>
-      <td style="padding:6px 10px;color:#334155;">${windStr}</td>
-      <td style="padding:6px 10px;color:${precipVal > 0 ? '#2563EB' : '#94A3B8'};font-weight:${precipVal > 0 ? '700' : '400'};">${precipStr}</td>
-      <td style="padding:6px 10px;color:#64748B;">${s.cloud_cover}%</td>
-      <td style="padding:6px 10px;color:#1E293B;">${weatherIcon(s.condition_id, s.icon)} ${s.condition || '--'}</td>
-    </tr>`;
-  }).join('');
-}
-
-// ── Map Tab ────────────────────────────────────────────────────────────────────
-function initMap() {
-  if (state.map) {
-    state.map.invalidateSize();
+// ── 2. Consensus Forecast Chart & Table ───────────────────────────────────────
+function renderForecastChart() {
+  const data = state.latestBlendedData;
+  if (!data || !data.forecast_points) {
+    loadDashboard();
     return;
   }
 
-  state.map = L.map('map').setView([17.6868, 83.2185], 11);
+  const variable = document.getElementById('forecast-chart-var').value;
+  const ctx = document.getElementById('blendedForecastChart').getContext('2d');
+
+  const labels = data.forecast_points.map(p => `+${p.lead_time_hours}h`);
+  let datasetData = [];
+  let labelTitle = '';
+  let chartType = 'line';
+  let color = '#2563EB';
+
+  if (variable === 'temp') {
+    datasetData = data.forecast_points.map(p => p.temperature);
+    labelTitle = '2m Temperature (°C)';
+    color = '#EF4444';
+  } else if (variable === 'rain') {
+    datasetData = data.forecast_points.map(p => p.precipitation);
+    labelTitle = 'Precipitation (mm/3h)';
+    chartType = 'bar';
+    color = '#3B82F6';
+  } else if (variable === 'wind') {
+    datasetData = data.forecast_points.map(p => p.wind_speed);
+    labelTitle = 'Wind Speed (km/h)';
+    color = '#10B981';
+  } else if (variable === 'pres') {
+    datasetData = data.forecast_points.map(p => p.pressure);
+    labelTitle = 'Surface Pressure (hPa)';
+    color = '#8B5CF6';
+  }
+
+  if (state.charts.forecast) state.charts.forecast.destroy();
+
+  state.charts.forecast = new Chart(ctx, {
+    type: chartType,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: labelTitle,
+        data: datasetData,
+        borderColor: color,
+        backgroundColor: chartType === 'bar' ? 'rgba(59, 130, 246, 0.6)' : 'rgba(37, 99, 235, 0.08)',
+        fill: chartType === 'line',
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 2.5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, position: 'top' },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: '#F1F5F9' } },
+      }
+    }
+  });
+
+  // Populate Table
+  const tbody = document.getElementById('forecast-table-tbody');
+  tbody.innerHTML = '';
+  data.forecast_points.forEach(p => {
+    const topModel = Object.keys(p.model_weights || {}).reduce((a, b) => p.model_weights[a] > p.model_weights[b] ? a : b, 'WRF');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>+${p.lead_time_hours}h</strong></td>
+      <td>${p.valid_time}</td>
+      <td style="font-weight:700;">${p.temperature}°C</td>
+      <td>${p.precipitation} mm</td>
+      <td>${p.precipitation_probability}%</td>
+      <td>${p.wind_speed} km/h</td>
+      <td>${p.wind_direction}°</td>
+      <td>${p.pressure}</td>
+      <td>${p.humidity}%</td>
+      <td><span class="step-status-tag step-success">${topModel}</span></td>
+      <td><span class="metric-pill conf-${p.confidence.category.toLowerCase()}" style="padding:2px 8px; font-size:0.68rem;">${p.confidence.category}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── 3. Model Comparison Loader ────────────────────────────────────────────────
+async function loadModelComparison() {
+  const loc = state.location;
+  try {
+    const res = await fetch(`/api/nwp/compare?location=${encodeURIComponent(loc)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const gfsPts = data.individual_models.GFS ? data.individual_models.GFS.points : [];
+    const wrfPts = data.individual_models.WRF ? data.individual_models.WRF.points : [];
+    const ecmwfPts = data.individual_models.ECMWF ? data.individual_models.ECMWF.points : [];
+    const blendPts = data.blended_consensus ? data.blended_consensus.forecast_points : [];
+
+    const labels = blendPts.slice(0, 16).map(p => `+${p.lead_time_hours}h`);
+
+    const ctx = document.getElementById('modelComparisonChart').getContext('2d');
+    if (state.charts.comparison) state.charts.comparison.destroy();
+
+    state.charts.comparison = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'NOAA GFS',
+            data: gfsPts.slice(0, 16).map(p => p.temperature),
+            borderColor: '#3B82F6',
+            borderDash: [5, 5],
+            tension: 0.3,
+            borderWidth: 1.8,
+            pointRadius: 2,
+          },
+          {
+            label: 'NCAR WRF',
+            data: wrfPts.slice(0, 16).map(p => p.temperature),
+            borderColor: '#10B981',
+            borderDash: [5, 5],
+            tension: 0.3,
+            borderWidth: 1.8,
+            pointRadius: 2,
+          },
+          {
+            label: 'ECMWF IFS',
+            data: ecmwfPts.slice(0, 16).map(p => p.temperature),
+            borderColor: '#8B5CF6',
+            borderDash: [5, 5],
+            tension: 0.3,
+            borderWidth: 1.8,
+            pointRadius: 2,
+          },
+          {
+            label: 'AI–NWP Consensus Blend',
+            data: blendPts.slice(0, 16).map(p => p.temperature),
+            borderColor: '#EF4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.06)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 3,
+            pointRadius: 3.5,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          title: { display: true, text: '2m Temperature (°C) — Individual Models vs Blended Consensus' },
+        },
+      }
+    });
+
+    // Comparison Matrix Cards
+    const grid = document.getElementById('comparison-cards-grid');
+    grid.innerHTML = '';
+    const models = [
+      { name: 'NOAA GFS', tag: '0.25° Global', temp: gfsPts[0]?.temperature || '--', rain: gfsPts[0]?.precipitation || '0.0', color: '#3B82F6' },
+      { name: 'NCAR WRF', tag: 'Mesoscale Convective', temp: wrfPts[0]?.temperature || '--', rain: wrfPts[0]?.precipitation || '0.0', color: '#10B981' },
+      { name: 'ECMWF IFS', tag: 'Global 9km HRES', temp: ecmwfPts[0]?.temperature || '--', rain: ecmwfPts[0]?.precipitation || '0.0', color: '#8B5CF6' },
+      { name: 'AI Consensus Blend', tag: 'Optimal Dynamic Blend', temp: blendPts[0]?.temperature || '--', rain: blendPts[0]?.precipitation || '0.0', color: '#EF4444' },
+    ];
+
+    models.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.borderTop = `4px solid ${m.color}`;
+      card.innerHTML = `
+        <div style="font-weight:700; font-size:0.95rem;">${m.name}</div>
+        <div style="font-size:0.7rem; color:#64748B;">${m.tag}</div>
+        <div style="font-size:1.8rem; font-weight:800; margin:10px 0 4px 0;">${m.temp}°C</div>
+        <div style="font-size:0.78rem; color:#2563EB;">Precip: ${m.rain} mm</div>
+      `;
+      grid.appendChild(card);
+    });
+
+  } catch (err) {
+    console.error('Error loading model comparison:', err);
+  }
+}
+
+// ── 4. Weight Maps Loader ─────────────────────────────────────────────────────
+async function loadWeightMap() {
+  const variable = document.getElementById('weight-map-var').value;
+  const lead = document.getElementById('weight-map-lead').value;
+
+  try {
+    const res = await fetch(`/api/nwp/weight-map?variable=${variable}&lead_time_hours=${lead}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const container = document.getElementById('weight-map-cards-container');
+    container.innerHTML = '';
+
+    data.forEach(reg => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const domColor = reg.dominant_model === 'WRF' ? '#10B981' : (reg.dominant_model === 'GFS' ? '#3B82F6' : '#8B5CF6');
+      card.innerHTML = `
+        <div style="font-weight:700; font-size:0.88rem; color:#0F172A;">${reg.region_name}</div>
+        <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:0.75rem; color:#64748B;">Dominant Model:</span>
+          <span class="step-status-tag" style="background:${domColor}; color:white;">${reg.dominant_model} (${reg.dominant_weight_pct}%)</span>
+        </div>
+        <div style="margin-top:10px; font-size:0.75rem; color:#475569;">
+          <div>GFS: <strong>${Math.round(reg.weights.GFS * 100)}%</strong></div>
+          <div>WRF: <strong>${Math.round(reg.weights.WRF * 100)}%</strong></div>
+          <div>ECMWF: <strong>${Math.round(reg.weights.ECMWF * 100)}%</strong></div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Error loading weight maps:', err);
+  }
+}
+
+// ── 5. Verification & Skill Loader ────────────────────────────────────────────
+async function loadVerification() {
+  const variable = document.getElementById('verif-var').value;
+  const region = document.getElementById('verif-region').value;
+
+  try {
+    const res = await fetch(`/api/nwp/verification?variable=${variable}&region=${region}&lead_time=24`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Verdict callout
+    document.getElementById('verif-verdict-box').textContent = data.verdict;
+
+    // Table
+    const tbody = document.getElementById('verif-metrics-tbody');
+    tbody.innerHTML = '';
+
+    const models = Object.keys(data.models || {});
+    const ctx = document.getElementById('verificationSkillChart').getContext('2d');
+    const maes = models.map(m => data.models[m].mae);
+
+    models.forEach(m => {
+      const stats = data.models[m];
+      const isBlended = m === 'BLENDED';
+      const tr = document.createElement('tr');
+      if (isBlended) tr.style.background = '#EFF6FF';
+      tr.innerHTML = `
+        <td><strong>${m}</strong> ${isBlended ? '⭐' : ''}</td>
+        <td style="font-weight:700; color:${isBlended ? '#1D4ED8' : '#1E293B'};">${stats.mae}</td>
+        <td>${stats.rmse}</td>
+        <td>${stats.bias > 0 ? '+' : ''}${stats.bias}</td>
+        <td>${stats.pod}</td>
+        <td>${stats.far}</td>
+        <td>${stats.csi}</td>
+        <td><span class="step-status-tag ${isBlended ? 'step-success' : ''}">${isBlended ? 'OPTIMAL CONSENSUS' : 'SINGLE MODEL'}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (state.charts.verification) state.charts.verification.destroy();
+    state.charts.verification = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: models,
+        datasets: [{
+          label: `Mean Absolute Error (MAE) — Lower is Better`,
+          data: maes,
+          backgroundColor: models.map(m => m === 'BLENDED' ? '#2563EB' : '#94A3B8'),
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'MAE' } }
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('Error loading verification:', err);
+  }
+}
+
+// ── 6. Extremes Loader ────────────────────────────────────────────────────────
+async function loadExtremes() {
+  const loc = state.location;
+  try {
+    // 1. Model-based guidance
+    const mRes = await fetch(`/api/extreme-weather?location=${encodeURIComponent(loc)}`);
+    if (mRes.ok) {
+      const mData = await mRes.json();
+      const mList = document.getElementById('extremes-model-guidance-list');
+      mList.innerHTML = '';
+      if (mData.alerts && mData.alerts.length > 0) {
+        mData.alerts.forEach(a => {
+          const div = document.createElement('div');
+          div.className = `alert-item alert-${a.severity.toLowerCase()}`;
+          div.innerHTML = `
+            <div class="alert-badge">${a.severity}</div>
+            <div class="alert-content">
+              <strong>${a.hazard_type} (Forecast: ${a.trigger_value} ${a.unit})</strong>
+              <div>${a.recommendation}</div>
+              <div style="font-size:0.68rem; color:#64748B; margin-top:3px;">Valid: ${a.valid_time} · Lead: +${a.lead_time_hours}h</div>
+            </div>
+          `;
+          mList.appendChild(div);
+        });
+      } else {
+        mList.innerHTML = '<div style="color:#64748B; font-size:0.8rem;">No extreme threshold breaches predicted in next 120h.</div>';
+      }
+    }
+
+    // 2. Official IMD Warnings
+    const oRes = await fetch(`/alerts/official?location=${encodeURIComponent(loc)}`);
+    if (oRes.ok) {
+      const oData = await oRes.json();
+      const oList = document.getElementById('extremes-official-warnings-list');
+      oList.innerHTML = '';
+      const warns = oData.official_warnings || [];
+      if (warns.length > 0) {
+        warns.forEach(w => {
+          const div = document.createElement('div');
+          div.className = `alert-item alert-${(w.color || 'yellow').toLowerCase()}`;
+          div.innerHTML = `
+            <div class="alert-badge">${w.color || 'OFFICIAL'}</div>
+            <div class="alert-content">
+              <strong>${w.warning_level || 'IMD Warning'} — ${w.hazard_type || 'Weather Hazard'}</strong>
+              <div>${w.description || 'Monitor official IMD bulletins.'}</div>
+              <div style="font-size:0.68rem; color:#64748B; margin-top:3px;">Authority: ${w.authority || 'IMD'}</div>
+            </div>
+          `;
+          oList.appendChild(div);
+        });
+      } else {
+        oList.innerHTML = '<div style="color:#64748B; font-size:0.8rem;">Green Alert: No severe weather warning from IMD for this district.</div>';
+      }
+    }
+  } catch (err) {
+    console.error('Error loading extremes:', err);
+  }
+}
+
+// ── 7. Operational Workflow Loader ────────────────────────────────────────────
+async function loadWorkflow() {
+  try {
+    const res = await fetch('/api/workflow/status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.getElementById('wf-stat-status').textContent = data.status;
+    document.getElementById('wf-stat-duration').textContent = `${data.total_duration_ms} ms`;
+    document.getElementById('wf-stat-timesteps').textContent = `${data.blended_timesteps_generated} Steps`;
+    document.getElementById('wf-stat-providers').textContent = `${data.active_providers.length} Active`;
+
+    const stepsContainer = document.getElementById('workflow-steps-container');
+    stepsContainer.innerHTML = '';
+    (data.steps || []).forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'workflow-step-card';
+      card.innerHTML = `
+        <div>
+          <div style="font-weight:700;">${s.step_name}</div>
+          <div style="font-size:0.72rem; color:#64748B;">${s.details || 'Completed'}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.72rem; color:#64748B;">${s.duration_ms}ms</span>
+          <span class="step-status-tag ${s.status === 'SUCCESS' ? 'step-success' : 'step-failed'}">${s.status}</span>
+        </div>
+      `;
+      stepsContainer.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Error loading workflow status:', err);
+  }
+}
+
+async function triggerWorkflowCycle() {
+  showToast('Executing Operational Blending Cycle...', 'info');
+  try {
+    const res = await fetch(`/api/workflow/run?location=${encodeURIComponent(state.location)}`, { method: 'POST' });
+    if (res.ok) {
+      showToast('Blending cycle completed successfully!', 'success');
+      loadWorkflow();
+      loadDashboard();
+    } else {
+      showToast('Workflow cycle encountered error.', 'error');
+    }
+  } catch (err) {
+    showToast('Failed to trigger workflow cycle.', 'error');
+  }
+}
+
+// ── 8. GIS Map ────────────────────────────────────────────────────────────────
+function initGISMap() {
+  if (state.gisMap) {
+    state.gisMap.invalidateSize();
+    return;
+  }
+
+  const mapEl = document.getElementById('gis-map');
+  if (!mapEl) return;
+
+  state.gisMap = L.map('gis-map').setView([state.lat, state.lon], 7);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
     maxZoom: 18,
-  }).addTo(state.map);
+    attribution: '© OpenStreetMap contributors',
+  }).addTo(state.gisMap);
 
-  addMapMarker(17.6868, 83.2185, 'Visakhapatnam', '--°C', 'Loading…');
-  loadMapWeather();
-  loadIngestionStatus();
+  state.gisMarker = L.marker([state.lat, state.lon])
+    .addTo(state.gisMap)
+    .bindPopup(`<b>${state.location}</b><br>AI-NWP Blended Consensus Point`)
+    .openPopup();
 
-  // Map click interaction: fetch weather at clicked point
-  state.map.on('click', async (e) => {
-    const { lat, lng } = e.latlng;
-    try {
-      showToast('Fetching weather for selected coordinates…', 'info');
-      const res = await fetch(`/weather/current?lat=${lat}&lon=${lng}`);
-      if (res.ok) {
-        const w = await res.json();
-        state.location = w.location;
-        state.lat = lat;
-        state.lon = lng;
-        updateHeroWeather(w);
-        updateNavLocation(w.location);
-        addMapMarker(lat, lng, w.location, `${w.temperature}°C`, w.condition);
-        const infoEl = document.getElementById('map-info');
-        if (infoEl) infoEl.classList.remove('hidden');
-        setText('map-city', w.location);
-        setText('map-coords', `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`);
-        setText('map-temp', `${w.temperature}°C`);
-        setText('map-cond', w.condition);
-        showToast(`Selected: ${w.location} (${w.temperature}°C)`, 'success');
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  state.gisMap.on('click', e => {
+    state.lat = e.latlng.lat;
+    state.lon = e.latlng.lng;
+    state.location = `Lat ${state.lat.toFixed(2)}, Lon ${state.lon.toFixed(2)}`;
+    document.getElementById('global-location-input').value = state.location;
+    state.gisMarker.setLatLng(e.latlng).bindPopup(`Selected: ${state.location}`).openPopup();
+    loadDashboard();
+    showToast(`Fetched consensus forecast for ${state.location}`, 'info');
   });
 }
 
-function addMapMarker(lat, lon, name, temp, cond) {
-  if (state.mapMarker && state.map) state.map.removeLayer(state.mapMarker);
-
-  const icon = L.divIcon({
-    html: `<div style="background:#2563EB;color:white;border-radius:50% 50% 50% 0;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;transform:rotate(-45deg);box-shadow:0 3px 10px rgba(37,99,235,0.4);">
-      <span style="transform:rotate(45deg);text-align:center;">${temp}</span>
-    </div>`,
-    className: '',
-    iconSize: [40, 40],
-    iconAnchor: [20, 40],
-  });
-
-  if (state.map) {
-    state.mapMarker = L.marker([lat, lon], { icon })
-      .addTo(state.map)
-      .bindPopup(`<strong>${name}</strong><br>${temp}<br>${cond}`, { maxWidth: 200 })
-      .openPopup();
-
-    state.map.flyTo([lat, lon], 10, { duration: 1.2 });
-  }
+function updateMapLayer() {
+  showToast('Updated active meteorological GIS layer.', 'info');
 }
 
-async function loadMapWeather() {
-  const location = document.getElementById('map-location')?.value.trim() || state.location;
-
-  try {
-    let url = `/weather/current?location=${encodeURIComponent(location)}`;
-    if (state.lat && state.lon && !document.getElementById('map-location')?.value) {
-      url = `/weather/current?lat=${state.lat}&lon=${state.lon}`;
-    }
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const w = await res.json();
-
-    addMapMarker(w.lat, w.lon, w.location, `${w.temperature}°C`, w.condition);
-
-    const infoEl = document.getElementById('map-info');
-    if (infoEl) { infoEl.classList.remove('hidden'); }
-    setText('map-city', w.location);
-    setText('map-coords', `${w.lat.toFixed(4)}°N, ${w.lon.toFixed(4)}°E`);
-    setText('map-temp', `${w.temperature}°C`);
-    setText('map-cond', w.condition);
-
-  } catch (e) {
-    console.error('Map weather error:', e);
-  }
-}
-
-function updateMap() {
-  loadMapWeather();
-}
-
-async function loadIngestionStatus() {
-  try {
-    const res = await fetch('/health');
-    if (!res.ok) return;
-    const data = await res.json();
-    const sources = data.ingestion || [];
-    const statusEl = document.getElementById('ingestion-status');
-    if (statusEl) {
-      statusEl.innerHTML = sources.map(s => {
-        const colors = { active: '#22C55E', integration_ready: '#F59E0B' };
-        const labels = { active: '● Active', integration_ready: '◐ Integration-ready' };
-        const proto = s.protocol ? `<span style="font-size:0.68rem;color:#94A3B8;margin-left:4px;">(${s.protocol})</span>` : '';
-        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F1F5F9;">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span style="color:${colors[s.status]||'#94A3B8'};font-weight:700;font-size:0.75rem;">${labels[s.status]||s.status}</span>
-            <span style="font-size:0.78rem;font-weight:600;color:#1E293B;">${s.name}</span>
-          </div>
-          ${proto}
-        </div>`;
-      }).join('');
-    }
-  } catch {}
-}
-
-// ── Advisory Tab ───────────────────────────────────────────────────────────────
-async function getAdvisory(mode) {
-  const location = document.getElementById('adv-location')?.value.trim() || state.location;
-  const resultEl = document.getElementById('advisory-result');
-  if (!resultEl) return;
-
-  resultEl.classList.remove('hidden');
-  resultEl.innerHTML = `<div class="empty-state"><div class="spinner" style="border-color:rgba(37,99,235,0.3);border-top-color:#2563EB;width:28px;height:28px;"></div><div class="empty-text">Generating ${mode} advisory…</div></div>`;
-
-  try {
-    const res = await fetch('/advisory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ location, mode, language: state.language }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Failed' }));
-      resultEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${err.detail}</div></div>`;
-      return;
-    }
-
-    const data = await res.json();
-    const modeIcons = { agriculture: '🌾', aviation: '✈️', marine: '🌊', travel: '🚗', outdoor: '🏕️', urban: '🏙️' };
-
-    resultEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <span style="font-size:1.8rem;">${modeIcons[mode] || '📋'}</span>
-        <div>
-          <div style="font-weight:700;font-size:0.95rem;">${data.title}</div>
-          <div style="font-size:0.75rem;color:#64748B;">${data.location}</div>
-        </div>
-      </div>
-      <div class="grid-2" style="margin-bottom:12px;">
-        <div class="stat-chip"><div class="stat-label">Temperature</div><div class="stat-value">${data.weather?.temperature}°C</div></div>
-        <div class="stat-chip"><div class="stat-label">Condition</div><div class="stat-value" style="font-size:0.85rem;">${data.weather?.condition}</div></div>
-        <div class="stat-chip"><div class="stat-label">Humidity</div><div class="stat-value">${data.weather?.humidity}%</div></div>
-        <div class="stat-chip"><div class="stat-label">Wind</div><div class="stat-value">${data.weather?.wind_speed} km/h</div></div>
-      </div>
-      <div style="background:#F8FAFC;border-radius:10px;padding:12px;font-size:0.84rem;line-height:1.65;color:#334155;margin-bottom:10px;">
-        ${formatMarkdown(data.advisory)}
-      </div>
-      <div style="font-size:0.7rem;color:#94A3B8;line-height:1.5;">⚠️ ${data.disclaimer}</div>
-      ${data.demo ? '<div style="font-size:0.65rem;color:#F59E0B;margin-top:6px;text-align:center;">⚠️ Demo data</div>' : ''}
-    `;
-
-  } catch (e) {
-    resultEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔌</div><div class="empty-text">Network error</div></div>`;
-  }
-}
-
-// ── Toast Notifications ────────────────────────────────────────────────────────
-function showToast(msg, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  const icons = { info: 'ℹ️', error: '⚠️', warning: '⚡', success: '✅' };
-  toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span>`;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(100%)';
-    toast.style.transition = '0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
-}
-
-// ── WebSocket Alerts ───────────────────────────────────────────────────────────
-function connectWebSocket() {
-  try {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/alerts`);
-
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === 'alert') {
-        showToast(`⚠️ ${data.severity} alert for ${data.location}`, 'warning');
-      }
-    };
-
-    ws.onerror = () => {};
-    ws.onclose = () => { setTimeout(connectWebSocket, 5000); };
-    state.wsAlerts = ws;
-  } catch {}
-}
-
-// ── Chart helpers ──────────────────────────────────────────────────────────────
-function destroyChart(key) {
-  if (state[key]) { state[key].destroy(); state[key] = null; }
-}
-
-// ── Initialisation ─────────────────────────────────────────────────────────────
-async function init() {
-  // Check health
-  try {
-    const res = await fetch('/health');
-    const data = await res.json();
-    state.demoMode = data.apis.demo_mode;
-    if (state.demoMode) {
-      const banner = document.getElementById('demo-banner');
-      if (banner) banner.style.display = 'block';
-    }
-  } catch {}
-
-  // Load initial weather for hero
-  try {
-    const res = await fetch(`/weather/current?location=${encodeURIComponent(state.location)}`);
-    if (res.ok) {
-      const w = await res.json();
-      updateHeroWeather(w);
-    }
-  } catch {}
-
-  // Connect WebSocket
-  connectWebSocket();
-}
-
-// Start
-document.addEventListener('DOMContentLoaded', init);
+// ── App Initialization ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadDashboard();
+});

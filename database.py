@@ -48,6 +48,48 @@ CREATE TABLE IF NOT EXISTS weather_cache (
     data        TEXT NOT NULL,
     expires_at  REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS forecast_models (
+    model_id    TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    institution TEXT NOT NULL,
+    resolution  TEXT,
+    is_active   INTEGER DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS model_skill (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_name  TEXT NOT NULL,
+    region      TEXT NOT NULL,
+    season      TEXT NOT NULL,
+    variable    TEXT NOT NULL,
+    lead_time   INTEGER NOT NULL,
+    mae         REAL NOT NULL,
+    rmse        REAL NOT NULL,
+    bias        REAL NOT NULL,
+    csi         REAL,
+    updated_at  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS model_weights (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    location    TEXT NOT NULL,
+    variable    TEXT NOT NULL,
+    lead_time   INTEGER NOT NULL,
+    weights_json TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blended_forecasts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    location    TEXT NOT NULL,
+    cycle_time  TEXT NOT NULL,
+    data_json   TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    run_id      TEXT PRIMARY KEY,
+    status      TEXT NOT NULL,
+    total_ms    INTEGER NOT NULL,
+    details_json TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
 """
 
 
