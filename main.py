@@ -507,7 +507,7 @@ async def api_nwp_blended(
     """Consensus blended forecast combining GFS, WRF, and ECMWF with dynamic weights."""
     series_map, _ = await nwp_manager.fetch_all_models(location=location, lat=lat, lon=lon)
     if not series_map:
-        raise HTTPException(status_code=503, detail="Unable to retrieve NWP forecasts for blending.")
+        raise HTTPException(status_code=503, detail="Unable to retrieve NWP forecasts for blending. Check /api/nwp/models and provider health.")
     blended = forecast_blender.blend_forecasts(series_map)
     return blended.model_dump()
 
