@@ -13,7 +13,7 @@ def fetch_model(model_endpoint:str, model_name:str, provider:str, location:Optio
     r=requests.get(f"https://api.open-meteo.com/v1/{model_endpoint}",params=params,timeout=15); r.raise_for_status()
     payload=r.json()
     if payload.get("error"):
-        raise RuntimeError(f"{model_name} API error: {payload.get("reason", payload.get("error"))}")
+        raise RuntimeError(f"{model_name} API error: {payload.get('reason', payload.get('error'))}")
     h=payload.get("hourly",{}); times=h.get("time",[])
     if not times: raise RuntimeError(f"{model_name} returned no forecast data")
     issue=datetime.now(timezone.utc).isoformat(); points=[]

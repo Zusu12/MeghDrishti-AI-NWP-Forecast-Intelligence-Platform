@@ -482,6 +482,7 @@ async function loadVerification() {
 
     const models = Object.keys(data.models || {});
     const ctx = document.getElementById('verificationSkillChart').getContext('2d');
+    if (!models.length) { document.getElementById('verif-verdict-box').textContent = data.verdict || 'No verified forecast-observation samples are available yet.'; if (state.charts.verification) state.charts.verification.destroy(); document.getElementById('verif-metrics-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;">Collecting real verification samples — no synthetic skill is displayed.</td></tr>'; return; }
     const maes = models.map(m => data.models[m].mae);
 
     models.forEach(m => {
@@ -630,7 +631,8 @@ async function triggerWorkflowCycle() {
       loadWorkflow();
       loadDashboard();
     } else {
-      showToast('Workflow cycle encountered error.', 'error');
+      const err = await res.json().catch(() => ({}));
+      showToast(`Workflow failed: ${err.detail || res.statusText}`, 'error');
     }
   } catch (err) {
     showToast('Failed to trigger workflow cycle.', 'error');

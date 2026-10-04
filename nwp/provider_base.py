@@ -35,4 +35,4 @@ class ForecastProvider(ABC):
 
     def get_status(self) -> str:
         """Return provider availability: AVAILABLE | DEGRADED | UNAVAILABLE | DEMO."""
-        return "AVAILABLE" if self.is_operational else "DEMO"
+        return "AVAILABLE" if self.is_operational else "UNAVAILABLE"
