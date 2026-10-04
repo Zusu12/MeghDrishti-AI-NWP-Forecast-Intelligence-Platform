@@ -522,7 +522,7 @@ async def api_nwp_weights(
 ):
     """Dynamic model weights for a specific variable and atmospheric situation."""
     weights_res = weighting_engine.compute_weights(
-        available_models=["GFS", "WRF", "ECMWF"],
+        available_models=[m for m in ["GFS", "WRF", "ECMWF"] if m != "WRF" or __import__("os").getenv("WRF_FEED_URL")],
         variable=variable,
         lead_time_hours=lead_time_hours,
         region=region,
