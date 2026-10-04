@@ -59,7 +59,7 @@ class NWPManager:
             logger.error(f"Unknown model provider requested: {model_name}")
             return None
 
-        cache_key = f"nwp_v2:{model_name.lower()}:{location or f'{lat},{lon}'}"
+        cache_key = f"nwp_v3:{model_name.lower()}:{location or f'{lat},{lon}'}"
         cached = await database.cache_get(cache_key)
         if cached:
             try:

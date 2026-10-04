@@ -3,6 +3,7 @@ nwp/providers/wrf_provider.py — Weather Research and Forecasting (WRF-ARW) Mes
 """
 import asyncio
 import logging
+import os
 from typing import Any, Dict, Optional
 import requests
 import config
@@ -45,9 +46,12 @@ class WRFProvider(ForecastProvider):
         lat: Optional[float] = None,
         lon: Optional[float] = None,
     ) -> ForecastSeries:
-        if config.DEMO_MODE or not config.OWM_API_KEY:
+        if config.NWP_DEMO_MODE:
             logger.info("WRFProvider operating in DEMO MODE — returning calibrated synthetic WRF forecast.")
             return await self._demo_fallback.get_forecast(location=location, lat=lat, lon=lon)
+
+        if not os.getenv("WRF_FEED_URL"):
+            raise RuntimeError("WRF_FEED_URL is not configured; WRF is unavailable rather than simulated.")
 
         try:
             params = {"units": "metric", "appid": config.OWM_API_KEY}

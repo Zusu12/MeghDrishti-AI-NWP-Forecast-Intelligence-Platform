@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from nwp.manager import nwp_manager
 from ml.forecast_blender import forecast_blender
 from schemas.workflow import OperationalWorkflowStatus, WorkflowStepResult
