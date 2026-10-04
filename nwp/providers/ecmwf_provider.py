@@ -20,7 +20,7 @@ class ECMWFProvider(ForecastProvider):
     grid_resolution = "9 km Global HRES Grid"
     time_step = "3-Hourly"
     forecast_horizon = "120 Hours (5 Days)"
-    is_operational = bool(config.OWM_API_KEY) and not config.DEMO_MODE
+    is_operational = True
 
     def __init__(self):
         # ECMWF IFS has high synoptic verification skill across tropical latitudes
