@@ -115,10 +115,9 @@ class TestModelSkillMetrics:
 
     def test_model_skill_service_comparison(self):
         comp = model_skill_service.compare_models(variable="temperature", region="coastal_ap")
-        assert "BLENDED" in comp.models
-        assert "GFS" in comp.models
-        assert "WRF" in comp.models
-        assert comp.better_than_all_single_models is True
+        assert comp.models == {}
+        assert comp.improvement_pct is None
+        assert comp.better_than_all_single_models is False
 
 
 class TestAdaptiveWeighting:
@@ -229,7 +228,7 @@ class TestSIHApiEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "models" in data
-        assert len(data["models"]) >= 3
+        assert len(data["models"]) == 3
 
     def test_get_nwp_weights(self):
         resp = client.get("/api/nwp/weights?variable=temperature&lead_time_hours=24")
@@ -264,3 +263,24 @@ class TestSIHApiEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] in ("COMPLETED", "IDLE", "RUNNING")
+
+
+class TestRuntimeIntegrity:
+    def test_nwp_provider_modules_import(self):
+        from nwp.providers.gfs_provider import GFSProvider
+        from nwp.providers.ecmwf_provider import ECMWFProvider
+        from nwp.providers.wrf_provider import WRFProvider
+        assert GFSProvider().get_status() == "AVAILABLE"
+        assert ECMWFProvider().get_status() == "AVAILABLE"
+        assert WRFProvider().get_status() == "UNAVAILABLE"
+
+    def test_open_meteo_error_payload_is_actionable(self, monkeypatch):
+        from nwp.providers import open_meteo
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"error": True, "reason": "invalid model"}
+        monkeypatch.setattr(open_meteo.requests, "get", lambda *a, **k: FakeResponse())
+        with pytest.raises(RuntimeError, match="invalid model"):
+            open_meteo.fetch_model("gfs", "GFS", "NOAA-GFS", "Visakhapatnam", None, None, "0.25°")
