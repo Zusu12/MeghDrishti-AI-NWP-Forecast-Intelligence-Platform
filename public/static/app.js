@@ -133,16 +133,21 @@ async function loadDashboard() {
     // 2. Fetch Consensus Blended Forecast
     const blendUrl = `/api/nwp/blended?location=${encodeURIComponent(loc)}`;
     const blendRes = await fetch(blendUrl);
-    if (blendRes.ok) {
-      const blendData = await blendRes.json();
-      state.latestBlendedData = blendData;
-      renderBlendedCard(blendData);
-      renderDashboardTimeline(blendData);
-      renderDynamicWeights(blendData);
+    if (!blendRes.ok) {
+      const err = await blendRes.json().catch(() => ({}));
+      throw new Error(err.detail || `NWP forecast request failed (HTTP ${blendRes.status})`);
     }
+    const blendData = await blendRes.json();
+    if (!blendData.forecast_points?.length) {
+      throw new Error('NWP blending returned no forecast points.');
+    }
+    state.latestBlendedData = blendData;
+    renderBlendedCard(blendData);
+    renderDashboardTimeline(blendData);
+    renderDynamicWeights(blendData);
   } catch (err) {
     console.error('Error loading dashboard:', err);
-    showToast('Failed to load multi-model forecast data.', 'error');
+    showToast(`Forecast loading failed: ${err.message || err}`, 'error');
   }
 }
 
