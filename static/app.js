@@ -631,7 +631,8 @@ async function triggerWorkflowCycle() {
       loadWorkflow();
       loadDashboard();
     } else {
-      showToast('Workflow cycle encountered error.', 'error');
+      const err = await res.json().catch(() => ({}));
+      showToast(`Workflow failed: ${err.detail || res.statusText}`, 'error');
     }
   } catch (err) {
     showToast('Failed to trigger workflow cycle.', 'error');
