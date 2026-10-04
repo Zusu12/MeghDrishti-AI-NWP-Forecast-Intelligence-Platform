@@ -9,7 +9,7 @@ HOURLY="temperature_2m,relative_humidity_2m,dew_point_2m,surface_pressure,wind_s
 
 def fetch_model(model_endpoint:str, model_name:str, provider:str, location:Optional[str], lat:Optional[float], lon:Optional[float], resolution:str)->ForecastSeries:
     lat=float(lat if lat is not None else 17.6868); lon=float(lon if lon is not None else 83.2185)
-    params={"latitude":lat,"longitude":lon,"hourly":HOURLY,"forecast_hours":120,"temperature_unit":"celsius","wind_speed_unit":"kmh","precipitation_unit":"mm","timeformat":"iso8601","timezone":"GMT"}
+    params={"latitude":lat,"longitude":lon,"hourly":HOURLY,"forecast_days":5,"temperature_unit":"celsius","wind_speed_unit":"kmh","precipitation_unit":"mm","timeformat":"iso8601","timezone":"GMT"}
     r=requests.get(f"https://api.open-meteo.com/v1/{model_endpoint}",params=params,timeout=15); r.raise_for_status()
     h=r.json().get("hourly",{}); times=h.get("time",[])
     if not times: raise RuntimeError(f"{model_name} returned no forecast data")

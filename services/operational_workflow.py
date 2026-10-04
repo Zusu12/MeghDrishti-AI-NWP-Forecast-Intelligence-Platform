@@ -98,7 +98,7 @@ class OperationalWorkflowService:
             )
 
             if not series_map:
-                raise RuntimeError("All NWP model providers failed ingestion.")
+                raise RuntimeError(f"All NWP model providers failed ingestion. Provider health: {health_status}")
 
             # 2. Data Validation & Normalization
             t0 = time.perf_counter()
@@ -197,8 +197,8 @@ class OperationalWorkflowService:
                 last_run_time=now_iso,
                 status="FAILED",
                 execution_type=execution_type,
-                active_providers=["GFS", "WRF"],
-                provider_health={"GFS": "DEGRADED", "WRF": "DEGRADED", "ECMWF": "OFFLINE"},
+                active_providers=list(health_status.keys()),
+                provider_health=health_status if "health_status" in locals() else {"GFS": "UNKNOWN", "WRF": "UNKNOWN", "ECMWF": "UNKNOWN"},
                 steps=steps,
                 total_duration_ms=total_ms,
                 blended_timesteps_generated=0,
