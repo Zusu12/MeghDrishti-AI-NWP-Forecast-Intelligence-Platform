@@ -20,7 +20,7 @@ class WRFProvider(ForecastProvider):
     grid_resolution = "3 km - 9 km High-Res Mesoscale Grid"
     time_step = "3-Hourly"
     forecast_horizon = "120 Hours (5 Days)"
-    is_operational = bool(config.OWM_API_KEY) and not config.DEMO_MODE
+    is_operational = bool(os.getenv("WRF_FEED_URL"))
 
     def __init__(self):
         # WRF mesoscale tends to resolve localized convection and topography better,

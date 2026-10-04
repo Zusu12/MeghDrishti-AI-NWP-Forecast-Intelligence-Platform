@@ -41,6 +41,7 @@ RATE_LIMIT_WEATHER: str = os.getenv("RATE_LIMIT_WEATHER", "30/minute")
 
 # ── Demo mode: activates when any critical key is missing ──────────────────────
 DEMO_MODE: bool = not all([GEMINI_API_KEY, OWM_API_KEY])
+NWP_DEMO_MODE: bool = os.getenv("NWP_DEMO_MODE", "false").lower() == "true"
 
 
 def api_status() -> dict:
@@ -50,4 +51,5 @@ def api_status() -> dict:
         "openweathermap": bool(OWM_API_KEY),
         "elevenlabs": bool(ELEVENLABS_API_KEY),
         "demo_mode": DEMO_MODE,
+        "nwp_demo_mode": NWP_DEMO_MODE,
     }
