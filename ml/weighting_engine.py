@@ -60,6 +60,12 @@ class AdaptiveWeightEngine:
                 rationale=f"Only {m} is operational/available.",
             )
 
+        verified = any(model_skill_service.get_skill(model, region=region, season=season, variable=variable, lead_time_hours=lead_time_hours) for model in available_models)
+        if not verified:
+            weights = {m: round(1.0 / len(available_models), 4) for m in available_models}
+            weights[available_models[-1]] = round(weights[available_models[-1]] + (1.0 - sum(weights.values())), 4)
+            return DynamicWeights(variable=variable, lead_time_hours=lead_time_hours, weights=weights, weather_regime=weather_regime, algorithm="equal_weight_no_verified_skill", rationale="No real forecast-observation verification samples are available; equal weights are used instead of fabricated historical skill.")
+
         raw_scores: Dict[str, float] = {}
         epsilon = 0.01  # Prevent division by zero
 

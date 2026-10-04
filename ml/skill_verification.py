@@ -80,7 +80,8 @@ class ModelSkillService:
         # Baseline reference database representing empirical meteorological performance
         # across typical Indian regions and lead times. Marked explicitly as synthetic baseline.
         self._skill_cache: Dict[str, ModelSkillRecord] = {}
-        self._seed_baseline_skill_data()
+        if __import__('os').getenv('ALLOW_SYNTHETIC_VERIFICATION', 'false').lower() == 'true':
+            self._seed_baseline_skill_data()
 
     def _make_key(self, model: str, region: str, season: str, variable: str, lead_time: int) -> str:
         return f"{model.upper()}:{region.lower()}:{season.lower()}:{variable.lower()}:{lead_time}"
@@ -165,6 +166,9 @@ class ModelSkillService:
         Compare skill across GFS, WRF, ECMWF, and the Blended consensus.
         Quantifies whether the blended consensus improves over individual models.
         """
+        if not self._skill_cache:
+            return VerificationComparison(variable=variable, region=region, lead_time_hours=lead_time_hours, models={}, improvement_pct=None, better_than_all_single_models=False, verdict="No verified forecast-observation samples are available yet. Collect real verification pairs before reporting model skill or blended improvement.")
+
         model_metrics = {}
         for m in ["GFS", "WRF", "ECMWF", "BLENDED"]:
             skill = self.get_skill(m, region=region, season=season, variable=variable, lead_time_hours=lead_time_hours)
