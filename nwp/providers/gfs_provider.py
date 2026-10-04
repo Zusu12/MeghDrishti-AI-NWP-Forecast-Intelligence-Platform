@@ -21,7 +21,7 @@ class GFSProvider(ForecastProvider):
     grid_resolution = "0.25° (~28 km Global Grid)"
     time_step = "3-Hourly"
     forecast_horizon = "120 Hours (5 Days)"
-    is_operational = bool(config.OWM_API_KEY) and not config.DEMO_MODE
+    is_operational = True
 
     def __init__(self):
         self._demo_fallback = DemoNWPProvider(model_name="GFS", bias_temp=-0.4, bias_rain=0.6)
