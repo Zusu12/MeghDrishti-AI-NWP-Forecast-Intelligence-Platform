@@ -430,6 +430,49 @@ async def nwp_status():
 
 # ── SIH 2026 Problem Statement SIH26081 Endpoints ──────────────────────────────
 
+@app.api_route("/api/index.py", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def vercel_api_dispatch(
+    request: Request,
+    path: str = "",
+    location: Optional[str] = "Visakhapatnam",
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    model: str = "GFS",
+    variable: str = "temperature",
+    lead_time_hours: int = 24,
+    region: str = "coastal_ap",
+    season: str = "monsoon",
+    weather_regime: str = "normal",
+):
+    """Dispatch Vercel-rewritten API requests back to their FastAPI route."""
+    path = path.strip("/")
+    if path == "weather/current":
+        return await api_get_current(request=request, location=location, lat=lat, lon=lon)
+    if path == "forecast":
+        return await api_get_forecast(request=request, location=location, lat=lat, lon=lon)
+    if path == "nwp/models":
+        return await api_nwp_models()
+    if path == "nwp/forecast":
+        return await api_nwp_model_forecast(model=model, location=location, lat=lat, lon=lon)
+    if path == "nwp/compare":
+        return await api_nwp_compare(location=location, lat=lat, lon=lon)
+    if path == "nwp/blended":
+        return await api_nwp_blended(location=location, lat=lat, lon=lon)
+    if path == "nwp/weights":
+        return await api_nwp_weights(variable=variable, lead_time_hours=lead_time_hours, region=region, season=season, weather_regime=weather_regime)
+    if path == "nwp/weight-map":
+        return await api_nwp_weight_map(variable=variable, lead_time_hours=lead_time_hours, season=season, weather_regime=weather_regime)
+    if path == "nwp/confidence":
+        return await api_nwp_confidence(location=location, lead_time_hours=lead_time_hours)
+    if path == "nwp/disagreement":
+        return await api_nwp_disagreement(location=location)
+    if path == "workflow/status":
+        return await api_workflow_status()
+    if path == "workflow/run":
+        return await api_workflow_run(location=location)
+    raise HTTPException(status_code=404, detail=f"Unknown API route: /api/{path}")
+
+
 @app.get("/api/weather/current")
 @limiter.limit(config.RATE_LIMIT_WEATHER)
 async def api_get_current(
